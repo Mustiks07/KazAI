@@ -883,7 +883,7 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
         <div class="ibox">
           <textarea id="inp" placeholder="Сұрағыңызды жазыңыз немесе / теріңіз..." rows="1" onkeydown="onKey(event)" oninput="onInput(this)"></textarea>
           <div class="iacts">
-            <input type="file" id="finp" accept="image/*,.txt" onchange="onFile(event)">
+            <input type="file" id="finp" accept="image/*,video/*,.txt" onchange="onFile(event)">
             <button class="ia" onclick="document.getElementById('finp').click()" title="Файл">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
             </button>
@@ -1369,7 +1369,49 @@ async function send(){
   addTyping();
 
   try {
-    // ── Реальный вызов бэка ──
+    // ── Бейне файлы болса — /api/detect/video ──
+    if (f && f.type.startsWith('video/')) {
+      const formData = new FormData();
+      formData.append('file', f);
+      const headers = {};
+      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+      const res = await fetch('/api/detect/video', { method:'POST', headers, body: formData });
+      const data = await res.json();
+      rmTyping();
+      if (!res.ok) throw new Error(data.error || 'Қате');
+      if (!currentChatId && data.chat_id) {
+        currentChatId = data.chat_id;
+        addToSidebarHistory('🎬 ' + f.name, currentChatId);
+      }
+      const r = data.response;
+      addMsg(r.text || r.label || '...', false, 'det');
+      if (data.usage) { todayMsgs = data.usage.today || todayMsgs+1; localStorage.setItem('kaz_today',todayMsgs); updateQuota(); }
+      document.getElementById('sendBtn').disabled=false;
+      return;
+    }
+
+    // ── Сурет файлы болса — /api/detect/image ──
+    if (f && f.type.startsWith('image/')) {
+      const formData = new FormData();
+      formData.append('file', f);
+      const headers = {};
+      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+      const res = await fetch('/api/detect/image', { method:'POST', headers, body: formData });
+      const data = await res.json();
+      rmTyping();
+      if (!res.ok) throw new Error(data.error || 'Қате');
+      if (!currentChatId && data.chat_id) {
+        currentChatId = data.chat_id;
+        addToSidebarHistory('🖼 ' + f.name, currentChatId);
+      }
+      const r = data.response;
+      addMsg(r.text || r.label || '...', false, 'det');
+      if (data.usage) { todayMsgs = data.usage.today || todayMsgs+1; localStorage.setItem('kaz_today',todayMsgs); updateQuota(); }
+      document.getElementById('sendBtn').disabled=false;
+      return;
+    }
+
+    // ── Қалыпты мәтін сұранысы ──
     const body = { text: txt, module: mod, chat_id: currentChatId };
     const data = await apiCall('/api/chat', 'POST', body);
 
