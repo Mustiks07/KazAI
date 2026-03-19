@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="kk" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KazAI — Қазақ тіліндегі ЖИ Көмекші</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<!-- ══════════════════════════════════
+     AUTH SCREEN
+══════════════════════════════════ -->
+<div class="auth-screen" id="authScreen">
+  <div class="auth-box">
+
+    <div class="auth-logo">
+      <div class="auth-av"><img id="authAv" src="" alt="KazAI"></div>
+      <div>
+        <div class="auth-brand"><span>KazAI</span></div>
+        <div class="auth-tagline">Қазақ тіліндегі алғашқы ЖИ Көмекші</div>
+      </div>
+    </div>
+
+    <div class="auth-tabs">
+      <div class="auth-tab active" onclick="switchAuthTab('login')">Кіру</div>
+      <div class="auth-tab" onclick="switchAuthTab('register')">Тіркелу</div>
+    </div>
+
+    <!-- Login -->
+    <div class="auth-form" id="loginForm">
+      <div>
+        <label class="fld-label">Email</label>
+        <input class="fld-inp" type="email" id="loginEmail" placeholder="email@example.com">
+      </div>
+      <div>
+        <label class="fld-label">Пароль</label>
+        <input class="fld-inp" type="password" id="loginPass" placeholder="Парольді енгізіңіз"
+               onkeydown="if(event.key==='Enter')doLogin()">
+      </div>
+      <div class="auth-error" id="loginErr"></div>
+      <button class="auth-btn" onclick="doLogin()">Кіру →</button>
+      <div class="auth-sep">немесе</div>
+      <button class="auth-google" onclick="googleLogin()">
+        <svg width="16" height="16" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+        Google арқылы кіру
+      </button>
+      <button class="auth-demo" onclick="demoLogin()">🚀 Демо режим (тіркелусіз)</button>
+      <div class="auth-footer">Аккаунт жоқ па? <a href="#" onclick="switchAuthTab('register');return false" style="color:#93c5fd">Тіркелу</a></div>
+    </div>
+
+    <!-- Register -->
+    <div class="auth-form hidden" id="registerForm">
+      <div>
+        <label class="fld-label">Аты</label>
+        <input class="fld-inp" type="text" id="regName" placeholder="Аруана Сейткали">
+      </div>
+      <div>
+        <label class="fld-label">Email</label>
+        <input class="fld-inp" type="email" id="regEmail" placeholder="email@example.com">
+      </div>
+      <div>
+        <label class="fld-label">Пароль</label>
+        <input class="fld-inp" type="password" id="regPass" placeholder="Кем дегенде 6 таңба">
+      </div>
+      <div class="auth-error" id="regErr"></div>
+      <button class="auth-btn" onclick="doRegister()">Тіркелу →</button>
+      <div class="auth-footer">Аккаунт бар ма? <a href="#" onclick="switchAuthTab('login');return false" style="color:#93c5fd">Кіру</a></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     SUBSCRIPTION MODAL
+══════════════════════════════════ -->
+<div class="modal-overlay" id="plansModal">
+  <div class="modal" style="max-width:740px">
+    <div class="modal-hd">
+      <div>
+        <div class="modal-title">⚡ Тарифтік жоспарлар</div>
+        <div class="modal-sub">Қажетті жоспарды таңдаңыз · Кез-келген уақытта өзгертуге болады</div>
+      </div>
+      <button class="modal-close" onclick="closeModal('plansModal')">✕</button>
+    </div>
+    <div class="plans-grid">
+      <div class="plan-card" id="planFree" onclick="selectPlan('free')">
+        <div class="plan-name">Free</div>
+        <div class="plan-price">0 ₸<span>/ай</span></div>
+        <div class="plan-feats">
+          <div class="plan-feat"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>20 сұрақ/күн</div>
+          <div class="plan-feat"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>3 режим</div>
+          <div class="plan-feat"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#4a4a4a" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>Файл жүктеу жоқ</div>
+          <div class="plan-feat"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#4a4a4a" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>Тарих жоқ</div>
+        </div>
+      </div>
+      <div class="plan-card popular" id="planPro" onclick="selectPlan('pro')">
+        <div class="plan-badge">ҮЗДІК</div>
+        <div class="plan-name">Pro</div>
+        <div class="plan-price">2 490 ₸<span>/ай</span></div>
+        <div class="plan-feats">
+          <div class="plan-feat"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Шексіз сұрақтар</div>
+          <div class="plan-feat"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Файл жүктеу</div>
+          <div class="plan-feat"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Толық тарих</div>
+          <div class="plan-feat"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Дауыс + экспорт</div>
+        </div>
+      </div>
+      <div class="plan-card" id="planUltra" onclick="selectPlan('ultra')">
+        <div class="plan-name">Ultra 🔥</div>
+        <div class="plan-price">5 990 ₸<span>/ай</span></div>
+        <div class="plan-feats">
+          <div class="plan-feat"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Pro + бәрі</div>
+          <div class="plan-feat"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>API қолжетімділік</div>
+          <div class="plan-feat"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Командалық кеңістік</div>
+          <div class="plan-feat"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>Басымдықты қолдау</div>
+        </div>
+      </div>
+    </div>
+    <button class="plans-btn" onclick="confirmPlan()">Жоспарды растау →</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     SETTINGS MODAL
+══════════════════════════════════ -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal" style="max-width:500px">
+    <div class="modal-hd">
+      <div class="modal-title">⚙️ Параметрлер</div>
+      <button class="modal-close" onclick="closeModal('settingsModal')">✕</button>
+    </div>
+    <div class="settings-body">
+      <div class="setting-row">
+        <div class="setting-info">
+          <div class="setting-name">Тақырып</div>
+          <div class="setting-desc">Жарық немесе қараңғы режим</div>
+        </div>
+        <div class="theme-switcher">
+          <button class="theme-opt" id="themeLight" onclick="setTheme('light')">☀️ Жарық</button>
+          <button class="theme-opt active" id="themeDark" onclick="setTheme('dark')">🌙 Қараңғы</button>
+        </div>
+      </div>
+      <div class="setting-row">
+        <div class="setting-info">
+          <div class="setting-name">Акцент түсі</div>
+          <div class="setting-desc">Интерфейстің негізгі түсі</div>
+        </div>
+        <div class="accent-picker">
+          <div class="accent-dot active" style="background:linear-gradient(135deg,#3b82f6,#7c3aed)" onclick="setAccent('blue','#3b82f6','#7c3aed')" title="Синий"></div>
+          <div class="accent-dot" style="background:linear-gradient(135deg,#10b981,#06b6d4)" onclick="setAccent('green','#10b981','#06b6d4')" title="Зелёный"></div>
+          <div class="accent-dot" style="background:linear-gradient(135deg,#f59e0b,#ef4444)" onclick="setAccent('amber','#f59e0b','#ef4444')" title="Оранжевый"></div>
+          <div class="accent-dot" style="background:linear-gradient(135deg,#ec4899,#8b5cf6)" onclick="setAccent('pink','#ec4899','#8b5cf6')" title="Розовый"></div>
+          <div class="accent-dot" style="background:linear-gradient(135deg,#14b8a6,#3b82f6)" onclick="setAccent('teal','#14b8a6','#3b82f6')" title="Бирюза"></div>
+        </div>
+      </div>
+      <div class="setting-row">
+        <div class="setting-info">
+          <div class="setting-name">Мәтін өлшемі</div>
+          <div class="setting-desc">Хабарлардың қаріп өлшемі</div>
+        </div>
+        <div class="font-size-ctrl">
+          <button class="fs-btn" onclick="changeFontSize(-1)">−</button>
+          <span class="fs-val" id="fsVal">14</span>
+          <button class="fs-btn" onclick="changeFontSize(1)">+</button>
+        </div>
+      </div>
+      <div class="setting-row">
+        <div class="setting-info">
+          <div class="setting-name">Дыбыстық хабарландырулар</div>
+          <div class="setting-desc">Жауап келгенде дыбыс шығарады</div>
+        </div>
+        <label class="toggle"><input type="checkbox" id="toggleSound" checked><span class="toggle-slider"></span></label>
+      </div>
+      <div class="setting-row">
+        <div class="setting-info">
+          <div class="setting-name">Анимациялар</div>
+          <div class="setting-desc">Интерфейс анимацияларын қосу/өшіру</div>
+        </div>
+        <label class="toggle"><input type="checkbox" id="toggleAnim" checked onchange="toggleAnimations(this)"><span class="toggle-slider"></span></label>
+      </div>
+      <div class="setting-row">
+        <div class="setting-info">
+          <div class="setting-name">Автоматты айналдыру</div>
+          <div class="setting-desc">Жаңа хабарға автоматты өту</div>
+        </div>
+        <label class="toggle"><input type="checkbox" id="toggleScroll" checked><span class="toggle-slider"></span></label>
+      </div>
+      <div class="setting-row">
+        <div class="setting-info">
+          <div class="setting-name">Компактты режим</div>
+          <div class="setting-desc">Хабарлар арасындағы бос орынды азайту</div>
+        </div>
+        <label class="toggle"><input type="checkbox" id="toggleCompact" onchange="toggleCompact(this)"><span class="toggle-slider"></span></label>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     PROFILE MODAL
+══════════════════════════════════ -->
+<div class="modal-overlay" id="profileModal">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-hd">
+      <div class="modal-title">👤 Профиль</div>
+      <button class="modal-close" onclick="closeModal('profileModal')">✕</button>
+    </div>
+    <div class="profile-top">
+      <div class="profile-av"><img id="profileAv" src="" alt=""></div>
+      <div>
+        <div class="profile-name" id="profileName">—</div>
+        <div class="profile-email" id="profileEmail">—</div>
+        <div class="profile-plan" id="profilePlan">Free</div>
+      </div>
+    </div>
+    <div class="stats-row">
+      <div class="stat-card"><div class="stat-val" id="statMsgs">0</div><div class="stat-lbl">Жіберілген</div></div>
+      <div class="stat-card"><div class="stat-val" id="statDays">1</div><div class="stat-lbl">Күн</div></div>
+      <div class="stat-card"><div class="stat-val" id="statTokens">0</div><div class="stat-lbl">Токен</div></div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="plans-btn" style="background:var(--s2);color:var(--text);box-shadow:none;border:1px solid var(--border)"
+              onclick="closeModal('profileModal');openModal('settingsModal')">Параметрлер</button>
+      <button class="plans-btn" onclick="doLogout()">Шығу</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toasts -->
+<div id="toasts"></div>
+
+<!-- ══════════════════════════════════
+     MAIN APP
+══════════════════════════════════ -->
+<div class="app" id="mainApp" style="display:none">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sb-top">
+      <div class="sb-av" onclick="openModal('profileModal')"><img id="sbAv" src="" alt=""></div>
+      <div style="min-width:0">
+        <div class="sb-name">KazAI</div>
+        <div class="sb-user" id="sbUser">—</div>
+        <div class="sb-plan-badge free" id="sbPlan">Free</div>
+      </div>
+    </div>
+
+    <div style="padding:6px 8px 0">
+      <div class="search-bar">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" placeholder="Тарихтан іздеу...">
+      </div>
+    </div>
+
+    <div class="quota-bar" id="quotaBar">
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+      <div class="quota-track"><div class="quota-fill" id="quotaFill" style="width:0%"></div></div>
+      <span class="quota-txt" id="quotaTxt">0/20 сұрақ</span>
+    </div>
+
+    <div class="sb-section">
+      <div class="sb-label">Режим</div>
+      <button class="sb-btn active" id="btn-all" onclick="setMod('all',this)">
+        <div class="sb-ic"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg></div>
+        Жалпы чат
+      </button>
+      <button class="sb-btn sb-btn-gov" id="btn-gov" onclick="setMod('gov',this)">
+        <div class="sb-ic"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></div>
+        Мемл. қызметтер
+      </button>
+      <button class="sb-btn sb-btn-tutor" id="btn-tutor" onclick="setMod('tutor',this)">
+        <div class="sb-ic"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg></div>
+        Қазақ тілі
+      </button>
+      <button class="sb-btn sb-btn-det" id="btn-det" onclick="setMod('det',this)">
+        <div class="sb-ic"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
+        ЖИ анықтауы
+      </button>
+    </div>
+
+    <button class="new-chat-btn" onclick="newChat()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Жаңа чат
+    </button>
+
+    <div class="sb-section" style="padding-top:12px">
+      <div class="sb-label">Соңғы чаттар</div>
+    </div>
+    <div class="sb-hist" id="histList"></div>
+
+    <div class="sb-foot">
+      <button class="sb-foot-btn sb-upgrade-btn" onclick="openModal('plansModal')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        Pro-ға жаңарту
+      </button>
+      <button class="sb-foot-btn" onclick="openModal('settingsModal')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 010 14.14M4.93 4.93a10 10 0 000 14.14"/></svg>
+        Параметрлер
+      </button>
+    </div>
+  </aside>
+
+  <!-- MAIN CHAT -->
+  <div class="main">
+    <div class="chat-hdr">
+      <button class="toggle-btn" onclick="toggleSidebar()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <div class="mode-dot" id="modeDot"></div>
+      <span class="mode-lbl" id="modeLbl">Жалпы чат</span>
+      <div class="hdr-actions">
+        <button class="hdr-btn" onclick="exportChat()" title="Экспорт">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
+        <button class="hdr-btn" onclick="clearChat()" title="Тазалау">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+        </button>
+        <button class="hdr-btn" onclick="toggleThemeQuick()" title="Тақырып" id="themeQuickBtn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="themeIcon">
+            <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+          </svg>
+        </button>
+        <button class="hdr-btn-label" onclick="openModal('profileModal')" id="hdrUserName">—</button>
+      </div>
+    </div>
+
+    <div class="msgs-wrap" id="msgsWrap">
+      <div class="msgs-inner" id="msgsInner">
+        <div class="welcome" id="welcome">
+          <div class="w-logo">
+            <div class="w-avatar"><img id="wAv" src="" alt=""></div>
+          </div>
+          <div>
+            <div class="w-title" id="wTitle">KazAI-ға қош келдіңіз</div>
+            <div class="w-sub">Қазақ тіліндегі алғашқы көпмодальды ЖИ көмекші. Мәтін жазыңыз, дауыспен сөйлеңіз немесе файл жүктеңіз.</div>
+          </div>
+          <div class="w-grid">
+            <div class="w-card" onclick="quick('ИИН алу үшін не қажет?')">
+              <div class="w-ci" style="background:rgba(16,185,129,.1)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg></div>
+              <div class="w-ct">Мемлекеттік қызметтер</div>
+              <div class="w-cd">ИИН, ЭЦП, жәрдемақы</div>
+            </div>
+            <div class="w-card" onclick="quick('Мына сөйлемді тексер: Мен мектепке барды')">
+              <div class="w-ci" style="background:rgba(245,158,11,.1)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg></div>
+              <div class="w-ct">Қазақ тілі</div>
+              <div class="w-cd">Грамматика, емле</div>
+            </div>
+            <div class="w-card" onclick="quick('Бұл мәтін жасанды интеллект жасады ма?')">
+              <div class="w-ci" style="background:rgba(239,68,68,.1)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
+              <div class="w-ct">ЖИ анықтауы</div>
+              <div class="w-cd">Мәтін тексеру</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Limit banner -->
+    <div class="limit-banner" id="limitBanner" style="display:none">
+      <span>⚠️ Бүгінгі лимит таусылды (20/20). Pro-ға жаңартыңыз!</span>
+      <button class="limit-up" onclick="openModal('plansModal')">Жаңарту →</button>
+    </div>
+
+    <!-- Input zone -->
+    <div class="input-zone">
+      <div class="input-outer">
+        <!-- Slash menu -->
+        <div id="slashMenu">
+          <div class="slash-item" onclick="slashCmd('gov')">
+            <div class="slash-ic" style="background:rgba(16,185,129,.1)">🏛️</div>
+            <div><div class="slash-name">/gov</div><div class="slash-desc">Мемлекеттік қызметтер режимі</div></div>
+            <span class="slash-kbd">Gov</span>
+          </div>
+          <div class="slash-item" onclick="slashCmd('tutor')">
+            <div class="slash-ic" style="background:rgba(245,158,11,.1)">📚</div>
+            <div><div class="slash-name">/tutor</div><div class="slash-desc">Қазақ тілі репетиторы</div></div>
+            <span class="slash-kbd">Tutor</span>
+          </div>
+          <div class="slash-item" onclick="slashCmd('det')">
+            <div class="slash-ic" style="background:rgba(239,68,68,.1)">🔍</div>
+            <div><div class="slash-name">/detect</div><div class="slash-desc">ЖИ контентін анықтау</div></div>
+            <span class="slash-kbd">AI</span>
+          </div>
+          <div class="slash-item" onclick="slashCmd('clear')">
+            <div class="slash-ic" style="background:rgba(99,102,241,.1)">🗑️</div>
+            <div><div class="slash-name">/clear</div><div class="slash-desc">Чатты тазалау</div></div>
+          </div>
+          <div class="slash-item" onclick="slashCmd('export')">
+            <div class="slash-ic" style="background:rgba(59,130,246,.1)">💾</div>
+            <div><div class="slash-name">/export</div><div class="slash-desc">Чатты экспорт</div></div>
+          </div>
+        </div>
+
+        <!-- File preview -->
+        <div class="fprev" id="fprev">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+          <span id="fname">файл</span>
+          <span class="fdel" onclick="clearFile()">✕</span>
+        </div>
+
+        <div class="ibox">
+          <textarea id="inp"
+            placeholder="Сұрағыңызды жазыңыз немесе / теріңіз..."
+            rows="1"
+            onkeydown="onKey(event)"
+            oninput="onInput(this)"></textarea>
+          <div class="iacts">
+            <!-- Image upload -->
+            <input type="file" id="finp" accept="image/*,.txt" onchange="onFile(event)">
+            <button class="ia" onclick="document.getElementById('finp').click()" title="Сурет жүктеу">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+            </button>
+            <!-- Video upload (NEW) -->
+            <input type="file" id="vinp" accept="video/*" onchange="onVideo(event)">
+            <button class="ia ia-video" onclick="document.getElementById('vinp').click()" title="Видео жүктеу (ЖИ анықтауы)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+            </button>
+            <!-- Voice input -->
+            <button class="ia" id="micBtn" onclick="toggleMic()" title="Дауыс">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
+            </button>
+            <!-- Send -->
+            <button class="sbtn" id="sendBtn" onclick="send()">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="ihint">Enter — жіберу · Shift+Enter — жаңа жол · / — командалар · 📹 видео жүктеу мүмкін</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script src="/js/app.js"></script>
+</body>
+</html>
