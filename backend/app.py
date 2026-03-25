@@ -2,7 +2,6 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 import os
-import tempfile
 from datetime import timedelta
 from dotenv import load_dotenv
 
@@ -17,8 +16,7 @@ from modules.detector import AIDetector
 from modules.openrouter import OpenRouterClient
 
 FRONTEND = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../frontend')
-
-app = Flask(__name__, static_folder=FRONTEND, static_url_path='')
+app = Flask(__name__, static_folder='../frontend', static_url_path='')
 CORS(app)
 
 # Config
@@ -30,18 +28,16 @@ app.config['JWT_HEADER_NAME'] = 'Authorization'
 app.config['JWT_HEADER_TYPE'] = 'Bearer'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///kazai.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['MAX_CONTENT_LENGTH'] = 20 * 1024 * 1024  # 20 MB лимит
 
 db.init_app(app)
 jwt = JWTManager(app)
 
 # Modules
-gov       = GovService()
-tutor     = KazakhTutor()
-detector  = AIDetector()
+gov     = GovService()
+tutor   = KazakhTutor()
+detector = AIDetector()
 ai_client = OpenRouterClient()
-
-ALLOWED_IMAGES = {'.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp'}
-ALLOWED_VIDEOS = {'.mp4', '.avi', '.mov', '.mkv', '.webm'}
 
 # ─────────────────────────────────────
 # SERVE FRONTEND
@@ -50,21 +46,14 @@ ALLOWED_VIDEOS = {'.mp4', '.avi', '.mov', '.mkv', '.webm'}
 def index():
     return send_from_directory(FRONTEND, 'index.html')
 
-@app.route('/<path:path>')
-def static_files(path):
-    full = os.path.join(FRONTEND, path)
-    if os.path.exists(full):
-        return send_from_directory(FRONTEND, path)
-    return send_from_directory(FRONTEND, 'index.html')
-
 # ─────────────────────────────────────
 # AUTH
 # ─────────────────────────────────────
 @app.route('/api/auth/register', methods=['POST'])
 def register():
-    data     = request.json
-    name     = data.get('name', '').strip()
-    email    = data.get('email', '').strip().lower()
+    data = request.json
+    name  = data.get('name', '').strip()
+    email = data.get('email', '').strip().lower()
     password = data.get('password', '')
 
     if not name or not email or not password:
@@ -82,11 +71,10 @@ def register():
     token = create_access_token(identity=str(user.id))
     return jsonify({'token': token, 'user': user.to_dict()}), 201
 
-
 @app.route('/api/auth/login', methods=['POST'])
 def login():
-    data     = request.json
-    email    = data.get('email', '').strip().lower()
+    data = request.json
+    email = data.get('email', '').strip().lower()
     password = data.get('password', '')
 
     user = User.query.filter_by(email=email).first()
@@ -95,7 +83,6 @@ def login():
 
     token = create_access_token(identity=str(user.id))
     return jsonify({'token': token, 'user': user.to_dict()})
-
 
 @app.route('/api/auth/me', methods=['GET'])
 @jwt_required(locations=["headers"])
@@ -110,38 +97,47 @@ def me():
 @jwt_required(locations=["headers"])
 def chat():
     user_id = int(get_jwt_identity())
-    user    = User.query.get(user_id)
-    data    = request.json
+    user = User.query.get(user_id)
+    data = request.json
 
     text    = data.get('text', '').strip()
-    module  = data.get('module', 'auto')
+    module  = data.get('module', 'auto')  # auto | gov | tutor | det
     chat_id = data.get('chat_id')
 
     if not text:
         return jsonify({'error': 'Мәтін жоқ'}), 400
-
+    
     print(f"📨 Chat request: module={module}, text={text[:50]}, chat_id={chat_id}")
 
-    if user.plan == 'free' and user.daily_count >= 20:
-        return jsonify({'error': 'limit', 'message': 'Бүгінгі лимит таусылды'}), 429
+    # Check daily limit for free users
+    # Тест режимі: лимит өшірілген
+    # if user.plan == 'free' and user.daily_count >= 20:
+    #     return jsonify({'error': 'limit', 'message': 'Бүгінгі лимит таусылды'}), 429
 
+    # ── Route to the right module ──
     response_data = {}
 
     if module == 'det':
         response_data = detector.analyze(text)
+
     elif module == 'gov':
         result = gov.search(text)
         if result['confidence'] > 0.3:
             response_data = {'text': result['answer'], 'source': 'gov_db'}
         else:
-            response_data = {'text': ai_client.ask(text, context='gov'), 'source': 'ai'}
+            ai_resp = ai_client.ask(text, context='gov')
+            response_data = {'text': ai_resp, 'source': 'ai'}
+
     elif module == 'tutor':
         result = tutor.analyze(text)
         if result['found']:
             response_data = {'text': result['answer'], 'source': 'tutor_db'}
         else:
-            response_data = {'text': ai_client.ask(text, context='tutor'), 'source': 'ai'}
-    else:
+            ai_resp = ai_client.ask(text, context='tutor')
+            response_data = {'text': ai_resp, 'source': 'ai'}
+
+    else:  # auto
+        # Try to detect which module fits
         detected = _detect_module(text)
         if detected == 'gov':
             result = gov.search(text)
@@ -155,8 +151,9 @@ def chat():
         else:
             response_data = {'text': ai_client.ask(text, context='general'), 'source': 'ai'}
 
+    # ── Save to DB ──
     if not chat_id:
-        title    = text[:40] + ('…' if len(text) > 40 else '')
+        title = text[:40] + ('…' if len(text) > 40 else '')
         new_chat = Chat(user_id=user_id, title=title)
         db.session.add(new_chat)
         db.session.flush()
@@ -166,129 +163,32 @@ def chat():
     db.session.add(Message(chat_id=chat_id, role='assistant',
                            content=response_data.get('text', ''), module=module))
 
-    user.daily_count    += 1
+    user.daily_count += 1
     user.total_messages += 1
     db.session.commit()
 
     return jsonify({
         'response': response_data,
-        'chat_id':  chat_id,
-        'usage':    {'today': user.daily_count, 'limit': 20 if user.plan == 'free' else None}
+        'chat_id': chat_id,
+        'usage': {'today': user.daily_count, 'limit': 20 if user.plan == 'free' else None}
     })
 
-
 def _detect_module(text):
-    t = text.lower()
-    gov_keys   = ['иин', 'эцп', 'паспорт', 'жәрдемақы', 'egov', 'дәрігер',
-                  'автокөлік', 'тіркеу', 'мемлекеттік', 'қызмет']
+    """Simple keyword router."""
+    text_lower = text.lower()
+    gov_keys = ['иин', 'эцп', 'паспорт', 'жәрдемақы', 'egov', 'дәрігер',
+                'автокөлік', 'тіркеу', 'мемлекеттік', 'қызмет']
     tutor_keys = ['тексер', 'грамматика', 'аудар', 'қате', 'сөйлем',
                   'жіктеу', 'айтылым', 'барды', 'бардым']
-    det_keys   = ['жасанды ма', 'ии жазды', 'анықта', 'generated', 'chatgpt жазды']
+    det_keys = ['жасанды ма', 'ии жасады', 'анықта', 'generated', 'chatgpt жазды']
 
-    if any(k in t for k in det_keys):   return 'det'
-    if any(k in t for k in gov_keys):   return 'gov'
-    if any(k in t for k in tutor_keys): return 'tutor'
+    if any(k in text_lower for k in det_keys):
+        return 'det'
+    if any(k in text_lower for k in gov_keys):
+        return 'gov'
+    if any(k in text_lower for k in tutor_keys):
+        return 'tutor'
     return 'general'
-
-# ─────────────────────────────────────
-# DETECTOR — СУРЕТ
-# ─────────────────────────────────────
-@app.route('/api/detect/image', methods=['POST'])
-@jwt_required(locations=["headers"])
-def detect_image():
-    user_id = int(get_jwt_identity())
-    user    = User.query.get(user_id)
-
-    if user.plan == 'free' and user.daily_count >= 20:
-        return jsonify({'error': 'limit', 'message': 'Бүгінгі лимит таусылды'}), 429
-    if 'file' not in request.files:
-        return jsonify({'error': 'Файл жоқ. "file" өрісін пайдаланыңыз'}), 400
-
-    file = request.files['file']
-    if not file.filename:
-        return jsonify({'error': 'Файл таңдалмаған'}), 400
-
-    ext = os.path.splitext(file.filename)[1].lower()
-    if ext not in ALLOWED_IMAGES:
-        return jsonify({'error': f'Рұқсат етілген форматтар: {", ".join(ALLOWED_IMAGES)}'}), 400
-
-    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
-        file.save(tmp.name)
-        tmp_path = tmp.name
-
-    try:
-        result   = detector.analyze_image(tmp_path)
-        title    = f'Сурет анализі: {file.filename[:30]}'
-        new_chat = Chat(user_id=user_id, title=title)
-        db.session.add(new_chat)
-        db.session.flush()
-
-        db.session.add(Message(chat_id=new_chat.id, role='user',
-                               content=f'[Сурет жіберілді: {file.filename}]', module='det'))
-        db.session.add(Message(chat_id=new_chat.id, role='assistant',
-                               content=result.get('text', ''), module='det'))
-
-        user.daily_count    += 1
-        user.total_messages += 1
-        db.session.commit()
-
-        return jsonify({
-            'response': result,
-            'chat_id':  new_chat.id,
-            'usage':    {'today': user.daily_count, 'limit': 20 if user.plan == 'free' else None}
-        })
-    finally:
-        os.unlink(tmp_path)
-
-# ─────────────────────────────────────
-# DETECTOR — БЕЙНЕ
-# ─────────────────────────────────────
-@app.route('/api/detect/video', methods=['POST'])
-@jwt_required(locations=["headers"])
-def detect_video():
-    user_id = int(get_jwt_identity())
-    user    = User.query.get(user_id)
-
-    if user.plan == 'free' and user.daily_count >= 20:
-        return jsonify({'error': 'limit', 'message': 'Бүгінгі лимит таусылды'}), 429
-    if 'file' not in request.files:
-        return jsonify({'error': 'Файл жоқ. "file" өрісін пайдаланыңыз'}), 400
-
-    file = request.files['file']
-    if not file.filename:
-        return jsonify({'error': 'Файл таңдалмаған'}), 400
-
-    ext = os.path.splitext(file.filename)[1].lower()
-    if ext not in ALLOWED_VIDEOS:
-        return jsonify({'error': f'Рұқсат етілген форматтар: {", ".join(ALLOWED_VIDEOS)}'}), 400
-
-    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
-        file.save(tmp.name)
-        tmp_path = tmp.name
-
-    try:
-        result   = detector.analyze_video(tmp_path)
-        title    = f'Бейне анализі: {file.filename[:30]}'
-        new_chat = Chat(user_id=user_id, title=title)
-        db.session.add(new_chat)
-        db.session.flush()
-
-        db.session.add(Message(chat_id=new_chat.id, role='user',
-                               content=f'[Бейне жіберілді: {file.filename}]', module='det'))
-        db.session.add(Message(chat_id=new_chat.id, role='assistant',
-                               content=result.get('text', ''), module='det'))
-
-        user.daily_count    += 1
-        user.total_messages += 1
-        db.session.commit()
-
-        return jsonify({
-            'response': result,
-            'chat_id':  new_chat.id,
-            'usage':    {'today': user.daily_count, 'limit': 20 if user.plan == 'free' else None}
-        })
-    finally:
-        os.unlink(tmp_path)
 
 # ─────────────────────────────────────
 # HISTORY
@@ -300,21 +200,19 @@ def history():
     chats = Chat.query.filter_by(user_id=user_id).order_by(Chat.created_at.desc()).limit(50).all()
     return jsonify([c.to_dict() for c in chats])
 
-
 @app.route('/api/history/<int:chat_id>/messages', methods=['GET'])
 @jwt_required(locations=["headers"])
 def chat_messages(chat_id):
     user_id = int(get_jwt_identity())
-    chat    = Chat.query.filter_by(id=chat_id, user_id=user_id).first_or_404()
-    msgs    = Message.query.filter_by(chat_id=chat.id).order_by(Message.created_at).all()
+    chat = Chat.query.filter_by(id=chat_id, user_id=user_id).first_or_404()
+    msgs = Message.query.filter_by(chat_id=chat.id).order_by(Message.created_at).all()
     return jsonify([m.to_dict() for m in msgs])
-
 
 @app.route('/api/history/<int:chat_id>', methods=['DELETE'])
 @jwt_required(locations=["headers"])
 def delete_chat(chat_id):
     user_id = int(get_jwt_identity())
-    chat    = Chat.query.filter_by(id=chat_id, user_id=user_id).first_or_404()
+    chat = Chat.query.filter_by(id=chat_id, user_id=user_id).first_or_404()
     Message.query.filter_by(chat_id=chat.id).delete()
     db.session.delete(chat)
     db.session.commit()
@@ -327,8 +225,8 @@ def delete_chat(chat_id):
 @jwt_required(locations=["headers"])
 def upgrade():
     user_id = int(get_jwt_identity())
-    plan    = request.json.get('plan', 'pro')
-    user    = User.query.get(user_id)
+    plan = request.json.get('plan', 'pro')
+    user = User.query.get(user_id)
     user.plan = plan
     db.session.commit()
     return jsonify({'ok': True, 'plan': plan})
@@ -342,10 +240,49 @@ def stats():
     user = User.query.get(int(get_jwt_identity()))
     return jsonify({
         'total_messages': user.total_messages,
-        'daily_count':    user.daily_count,
-        'plan':           user.plan,
-        'member_since':   user.created_at.isoformat()
+        'daily_count': user.daily_count,
+        'plan': user.plan,
+        'member_since': user.created_at.isoformat()
     })
+
+
+# ─────────────────────────────────────
+# СУРЕТ ДЕТЕКТОРЫ
+# ─────────────────────────────────────
+@app.route('/api/detect/image', methods=['POST'])
+@jwt_required(optional=True)
+def detect_image():
+    if 'file' not in request.files:
+        return jsonify({'error': 'Файл жоқ'}), 400
+    file = request.files['file']
+    if not file.filename:
+        return jsonify({'error': 'Файл таңдалмаған'}), 400
+    import tempfile, os as _os
+    suffix = _os.path.splitext(file.filename)[1] or '.jpg'
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        file.save(tmp.name)
+        result = detector.analyze_image(tmp.name)
+    _os.unlink(tmp.name)
+    return jsonify({'response': result, 'chat_id': None})
+
+# ─────────────────────────────────────
+# БЕЙНЕ ДЕТЕКТОРЫ
+# ─────────────────────────────────────
+@app.route('/api/detect/video', methods=['POST'])
+@jwt_required(optional=True)
+def detect_video():
+    if 'file' not in request.files:
+        return jsonify({'error': 'Файл жоқ'}), 400
+    file = request.files['file']
+    if not file.filename:
+        return jsonify({'error': 'Файл таңдалмаған'}), 400
+    import tempfile, os as _os
+    suffix = _os.path.splitext(file.filename)[1] or '.mp4'
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        file.save(tmp.name)
+        result = detector.analyze_video(tmp.name)
+    _os.unlink(tmp.name)
+    return jsonify({'response': result, 'chat_id': None})
 
 # ─────────────────────────────────────
 # INIT DB + RUN
