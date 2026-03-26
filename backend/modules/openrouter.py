@@ -22,7 +22,7 @@ class OpenRouterClient:
 
     # Приоритет: бесплатные сначала, потом платные (дешёвые)
     MODELS = [
-           "stepfun/step-3.5-flash:free"
+           "arcee-ai/trinity-large-preview:free"
                  
 
     ]

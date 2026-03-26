@@ -1,4 +1,4 @@
-import re, os, math, pickle, requests, json
+import re, os, math, pickle, requests, json, base64
 from collections import Counter
 
 
@@ -40,144 +40,117 @@ class TextDetector:
 
     def analyze(self, text):
         if len(text.strip()) < 20:
-            return {
-                'score': 0, 'verdict': 'short',
-                'label': '⚠️ Мәтін тым қысқа',
-                'text':  'Нақты анықтау үшін кем дегенде 20 таңба қажет.'
-            }
+            return {'score': 0, 'verdict': 'short',
+                    'label': 'Мәтін тым қысқа',
+                    'text':  'Нақты анықтау үшін кем дегенде 20 таңба қажет.'}
         f = self._features(text)
 
-        # 1. LLM-as-Judge (OpenRouter) — ең нақты
+        # 1. LLM-as-Judge
         if self.or_api_key:
             llm = self._llm_judge(text)
             if llm is not None:
                 llm_score, llm_reason = llm if isinstance(llm, tuple) else (llm, '')
                 score   = min(int(llm_score) + min(f['markers'] * 4, 10), 97)
-                method  = f"LLM-as-Judge (OpenRouter) + {f['markers']} маркер"
+                method  = 'LLM-as-Judge + ' + str(f['markers']) + ' маркер'
                 verdict = 'ai' if score >= 52 else 'human'
-                label   = ('⚠️ Жасанды интеллект жазған болуы мүмкін'
-                           if verdict == 'ai' else '✅ Адам жазған сияқты')
+                label   = 'Жасанды интеллект жазған болуы мүмкін' if verdict == 'ai' else 'Адам жазған сияқты'
                 return {'score': score, 'verdict': verdict, 'label': label,
                         'text': self._explain(score, f, verdict, method, llm_reason)}
 
-        # 2. RoBERTa (резерв)
+        # 2. RoBERTa
         if self.hf_token:
             roberta = self._roberta_score(text)
             if roberta is not None:
                 score   = min(roberta + min(f['markers'] * 4, 12), 97)
                 verdict = 'ai' if score >= 52 else 'human'
-                label   = ('⚠️ Жасанды интеллект жазған болуы мүмкін'
-                           if verdict == 'ai' else '✅ Адам жазған сияқты')
+                label   = 'Жасанды интеллект жазған болуы мүмкін' if verdict == 'ai' else 'Адам жазған сияқты'
                 return {'score': score, 'verdict': verdict, 'label': label,
-                        'text': self._explain(score, f, verdict,
-                                              f"OpenAI RoBERTa + {f['markers']} маркер")}
+                        'text': self._explain(score, f, verdict, 'OpenAI RoBERTa')}
 
-        # 3. TF-IDF ML резерв
+        # 3. ML резерв
         if self.model:
             prob  = float(self.model.predict_proba([text])[0][1])
             score = min(int(prob * 100) + min(f['markers'] * 5, 15), 97)
-            method = f"TF-IDF ML модель + {f['markers']} маркер"
+            method = 'TF-IDF ML модель'
         else:
             score  = self._stat_score(f)
-            method = 'Статистикалық талдау (burstiness + TTR)'
+            method = 'Статистикалық талдау'
 
         verdict = 'ai' if score >= 52 else 'human'
-        label   = ('⚠️ Жасанды интеллект жазған болуы мүмкін'
-                   if verdict == 'ai' else '✅ Адам жазған сияқты')
+        label   = 'Жасанды интеллект жазған болуы мүмкін' if verdict == 'ai' else 'Адам жазған сияқты'
         return {'score': score, 'verdict': verdict, 'label': label,
                 'text': self._explain(score, f, verdict, method)}
 
     def _llm_judge(self, text):
-        """LLM-as-Judge: OpenRouter арқылы LLM мәтінді тексереді."""
         try:
             prompt = (
-                "Сен ЖИ мәтін детекторысың. Берілген мәтінді талдап, "
-                "оның жасанды интеллект жазғанын немесе адам жазғанын анықта.\n\n"
-                "Мәтін:\n\"\"\"\n" + text[:800] + "\n\"\"\"\n\n"
-                "Respond ONLY with JSON, no extra text:\n"
-                "{\"score\": 0-100, \"reason\": \"15-20 words\"}\n\n"
-                "score: 0-30=human, 31-60=uncertain, 61-100=AI.\n"
-                "reason: ONE sentence in the same language as the text, 15-20 words, ending with period. Mention specific AI signs found."
+                'You are an AI text detector. Analyze if the text was written by AI or human.\n\n'
+                'Text:\n"""\n' + text[:800] + '\n"""\n\n'
+                'Respond ONLY with JSON:\n'
+                '{"score": 0-100}\n\n'
+                'score: 0-30=human, 31-60=uncertain, 61-100=AI.\n'
+                'AI signs: template phrases, formal cliches, perfect grammar, uniform style.\n'
+                'Human signs: emotions, errors, informal tone.'
             )
             resp = requests.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self.or_api_key}",
-                    "Content-Type":  "application/json"
-                },
-                json={
-                    "model":       "arcee-ai/trinity-large-preview:free",
-                    "messages":    [{"role": "user", "content": prompt}],
-                    "max_tokens":  120,
-                    "temperature": 0.1
-                },
+                'https://openrouter.ai/api/v1/chat/completions',
+                headers={'Authorization': 'Bearer ' + self.or_api_key, 'Content-Type': 'application/json'},
+                json={'model': 'arcee-ai/trinity-large-preview:free',
+                      'messages': [{'role': 'user', 'content': prompt}],
+                      'max_tokens': 60, 'temperature': 0.1},
                 timeout=20
             )
             if resp.status_code == 429:
-                import time
-                print("⏳ Rate limit, 3 сек күту...")
-                time.sleep(3)
+                import time; time.sleep(3)
                 resp = requests.post(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    headers={"Authorization": f"Bearer {self.or_api_key}", "Content-Type": "application/json"},
-                    json={"model": "arcee-ai/trinity-large-preview:free",
-                          "messages": [{"role": "user", "content": prompt}],
-                          "max_tokens": 300, "temperature": 0.1},
+                    'https://openrouter.ai/api/v1/chat/completions',
+                    headers={'Authorization': 'Bearer ' + self.or_api_key, 'Content-Type': 'application/json'},
+                    json={'model': 'arcee-ai/trinity-large-preview:free',
+                          'messages': [{'role': 'user', 'content': prompt}],
+                          'max_tokens': 60, 'temperature': 0.1},
                     timeout=20
                 )
             if resp.status_code == 200:
-                raw     = resp.json()
-                choices = raw.get('choices') or []
-                if not choices: 
-                    print(f"⚠️ choices бос: {str(raw)[:100]}")
-                    return None
-                choice = choices[0].get('message', {}).get('content', '') or ''
-
-                print(f"LLM raw: {repr(choice[:100])}")
-                if not choice: return None
-                content = choice.strip()
-                # Тек score санын алу — regex арқылы
-                import re as _re
-                match = _re.search(r'"score"\s*:\s*(\d+)', content)
-                if match:
-                    score = int(match.group(1))
-                    # reason алу — escaped quotes қолдайды
-                    reason_match = _re.search(r'"reason"\s*:\s*"((?:[^"\\]|\\.){0,500})', content)
-                    reason = reason_match.group(1).replace('\\"', '"') if reason_match else ''
-                    reason = reason[:600]
-                    print(f"✅ LLM Judge: {score}%")
+                choices = resp.json().get('choices') or []
+                if not choices: return None
+                content = choices[0].get('message', {}).get('content', '') or ''
+                print('LLM raw: ' + repr(content[:80]))
+                m = re.search(r'"score"\s*:\s*(\d+)', content)
+                if m:
+                    score = int(m.group(1))
+                    if score >= 80:
+                        reason = 'Мәтінде шаблонды сөйлемдер, маркерлер және біркелкі стиль анықталды.'
+                    elif score >= 61:
+                        reason = 'Мәтінде ЖИ белгілері бар: тым мінсіз грамматика және біркелкі стиль.'
+                    elif score >= 40:
+                        reason = 'Мәтінде ЖИ және адам белгілері аралас кездеседі.'
+                    else:
+                        reason = 'Мәтінде эмоция, бейресми тіл және адамға тән белгілер бар.'
+                    print('LLM Judge: ' + str(score) + '%')
                     return max(0, min(100, score)), reason
-                print(f"⚠️ score табылмады: {content[:80]}")
-                return None
             else:
-                print(f"⚠️ OpenRouter: {resp.status_code} — {resp.text[:100]}")
-                return None
+                print('OpenRouter: ' + str(resp.status_code))
+            return None
         except Exception as e:
-            print(f"⚠️ LLM Judge қатесі: {e}")
+            print('LLM Judge қатесі: ' + str(e))
             return None
 
     def _roberta_score(self, text):
-        """OpenAI RoBERTa детекторы."""
         try:
-            headers    = {"Authorization": f"Bearer {self.hf_token}", "Content-Type": "application/json"}
-            clean_text = ''.join(c for c in text[:500] if ord(c) < 0x10000 and c not in '✅⚠️🔴🟡🟢📊🎬📐')
+            headers    = {'Authorization': 'Bearer ' + self.hf_token, 'Content-Type': 'application/json'}
+            clean_text = ''.join(c for c in text[:500] if ord(c) < 0x10000)
             clean_text = ' '.join(clean_text.split())
-            resp = requests.post(self.HF_URL, headers=headers,
-                                 json={"inputs": clean_text}, timeout=30)
+            resp = requests.post(self.HF_URL, headers=headers, json={'inputs': clean_text}, timeout=30)
             if resp.status_code == 200:
                 data = resp.json()
                 if data and isinstance(data, list) and isinstance(data[0], list):
-                    results   = {item["label"]: item["score"] for item in data[0]}
-                    fake_prob = results.get("Fake", 0.5)
-                    print(f"✅ RoBERTa: Fake={fake_prob:.2f}")
+                    results   = {item['label']: item['score'] for item in data[0]}
+                    fake_prob = results.get('Fake', 0.5)
+                    print('RoBERTa: Fake=' + str(round(fake_prob, 2)))
                     return int(fake_prob * 100)
-            elif resp.status_code == 503:
-                print("⏳ RoBERTa жүктелуде...")
-            else:
-                print(f"⚠️ HF: {resp.status_code}")
             return None
         except Exception as e:
-            print(f"⚠️ RoBERTa қатесі: {e}")
+            print('RoBERTa қатесі: ' + str(e))
             return None
 
     def _features(self, text):
@@ -202,24 +175,24 @@ class TextDetector:
     def _explain(self, score, f, verdict, method, reason=''):
         lines = []
         if verdict == 'ai':
-            lines.append(f"**Нәтиже:** ЖИ жазған ықтималдылығы — **{score}%**")
+            lines.append('**Нәтиже:** ЖИ жазған ықтималдылығы — **' + str(score) + '%**')
         else:
-            lines.append(f"**Нәтиже:** Адам жазған ықтималдылығы жоғары\nЖИ ықтималдылығы: **{score}%**")
+            lines.append('**Нәтиже:** Адам жазған ықтималдылығы жоғары\nЖИ ықтималдылығы: **' + str(score) + '%**')
         if reason:
-            lines.append(f"\n💬 **Себеп:** {reason[:400]}")
-        lines.append("\n**Белгілер:**\n")
+            lines.append('\n💬 **Себеп:** ' + reason)
+        lines.append('\n**Белгілер:**\n')
         if f['markers']:
-            lines.append(f"🔴 **ЖИ маркерлері:** {f['markers']} дана")
+            lines.append('🔴 **ЖИ маркерлері:** ' + str(f['markers']) + ' дана')
             for m in f['markers_found'][:4]:
-                lines.append(f"   — «{m}»")
+                lines.append('   — «' + m + '»')
         else:
-            lines.append("🟢 **ЖИ маркерлері:** табылмады")
-        lines.append(f"{'🟡' if f['avg'] > 16 else '🟢'} **Орташа сөйлем:** {f['avg']} сөз")
-        lines.append(f"{'🟡' if f['ttr'] < 0.45 else '🟢'} **Сөздік байлығы (TTR):** {int(f['ttr']*100)}%")
+            lines.append('🟢 **ЖИ маркерлері:** табылмады')
+        lines.append(('🟡' if f['avg'] > 16 else '🟢') + ' **Орташа сөйлем:** ' + str(f['avg']) + ' сөз')
+        lines.append(('🟡' if f['ttr'] < 0.45 else '🟢') + ' **Сөздік байлығы (TTR):** ' + str(int(f['ttr']*100)) + '%')
         if f['informal']:
-            lines.append("🟢 **Бейресми тіл:** бар (адам белгісі)")
-        lines.append(f"\n📊 {f['words']} сөз · {f['sents']} сөйлем")
-        lines.append("\n⚠️ *Анықтау 100% дәл емес. Нәтижені контекстпен бірге бағалаңыз.*")
+            lines.append('🟢 **Бейресми тіл:** бар (адам белгісі)')
+        lines.append('\n📊 ' + str(f['words']) + ' сөз · ' + str(f['sents']) + ' сөйлем')
+        lines.append('\n*Анықтау 100% дәл емес. Нәтижені контекстпен бірге бағалаңыз.*')
         return '\n'.join(lines)
 
 
@@ -227,71 +200,104 @@ class TextDetector:
 # СУРЕТ ДЕТЕКТОРЫ
 # ══════════════════════════════════════════
 class ImageDetector:
-    HF_URL = "https://api-inference.huggingface.co/models/umm-maybe/AI-image-detector"
 
     def __init__(self):
-        self.hf_token = os.getenv('HUGGINGFACE_TOKEN', '')
+        self.or_api_key = os.getenv('OPENROUTER_API_KEY', '')
 
     def analyze(self, image_path):
-        # 1. HuggingFace нейросеті (негізгі)
-        if self.hf_token:
-            hf = self._hf_analyze(image_path)
-            if hf is not None:
-                return hf
-        # 2. Pillow статистика (резерв)
+        # 1. NVIDIA Nemotron VL (негізгі)
+        result = self._vision_analyze(image_path, 'nvidia/nemotron-nano-12b-v2-vl:free')
+        if result is not None:
+            return result
+        # 2. Google Gemma Vision (резерв)
+        result = self._vision_analyze(image_path, 'google/gemma-3-27b-it:free')
+        if result is not None:
+            return result
+        # 3. Pillow статистика (соңғы резерв)
         try:
             from PIL import Image
-            return self._analyze(image_path)
+            return self._pillow_analyze(image_path)
         except ImportError:
             return {'score': 50, 'verdict': 'unknown',
-                    'label': '⚠️ Pillow орнатылмаған',
-                    'text':  '`pip install Pillow` командасын іске қосыңыз.'}
+                    'label': 'Pillow орнатылмаған', 'text': 'pip install Pillow'}
         except Exception as e:
-            return {'score': 0, 'verdict': 'error', 'label': '❌ Қате', 'text': str(e)}
+            return {'score': 0, 'verdict': 'error', 'label': 'Қате', 'text': str(e)}
 
-    def _hf_analyze(self, path):
-        """HuggingFace AI-image-detector нейросеті"""
+    def _vision_analyze(self, path, model):
+        if not self.or_api_key:
+            return None
         try:
-            headers = {"Authorization": f"Bearer {self.hf_token}"}
-            with open(path, "rb") as f:
-                data = f.read()
-            resp = requests.post(self.HF_URL, headers=headers, data=data, timeout=30, stream=False)
+            # Суретті 512x512-ге дейін кішірейт (токен лимиті үшін)
+            try:
+                from PIL import Image as PILImage
+                import io
+                with PILImage.open(path) as im:
+                    im.thumbnail((512, 512), PILImage.LANCZOS)
+                    buf = io.BytesIO()
+                    im.save(buf, format='JPEG', quality=75)
+                    img_data = base64.b64encode(buf.getvalue()).decode()
+                    mime = 'image/jpeg'
+            except Exception:
+                with open(path, 'rb') as f:
+                    img_data = base64.b64encode(f.read()).decode()
+                ext  = path.split('.')[-1].lower()
+                mime = {'jpg':'image/jpeg','jpeg':'image/jpeg','png':'image/png','webp':'image/webp'}.get(ext,'image/jpeg')
+            img_url = 'data:' + mime + ';base64,' + img_data
+            resp = requests.post(
+                'https://openrouter.ai/api/v1/chat/completions',
+                headers={'Authorization': 'Bearer ' + self.or_api_key,
+                         'Content-Type': 'application/json'},
+                json={
+                    'model': model,
+                    'messages': [
+                        {'role': 'system', 'content': 'You are an AI image detector. Always respond with valid JSON only, no explanations.'},
+                        {'role': 'user', 'content': [
+                        {'type': 'image_url', 'image_url': {'url': img_url}},
+                        {'type': 'text',
+                         'text': 'Is this image AI-generated or a real photo? Output ONLY this JSON, nothing else: {"score": NUMBER} where NUMBER is 0-100 (0=real photo, 100=AI generated).'}
+                    ]}],
+                    'max_tokens': 300,
+                    'temperature': 0.1,
+                    'reasoning': {'effort': 'none'}
+                },
+                timeout=30
+            )
             if resp.status_code == 200:
-                results  = resp.json()
-                print(f"HF Image raw: {str(results)[:150]}")
-                ai_score = 0
-                # Жауап форматы: [{"label":"artificial","score":0.9}] немесе [[...]]
-                items = results[0] if isinstance(results[0], list) else results
-                for item in items:
-                    lbl = item.get('label','').lower()
-                    if lbl in ['artificial', 'fake', 'ai', 'generated']:
-                        ai_score = item['score'] * 100
-                    elif lbl in ['real', 'human', 'natural'] and ai_score == 0:
-                        ai_score = (1 - item['score']) * 100
-                score   = int(ai_score)
-                verdict = 'ai' if score > 52 else 'human'
-                label   = '🤖 ЖИ жасаған сурет болуы мүмкін' if verdict == 'ai' else '✅ Нақты сурет'
-                print(f"✅ HF Image: {score}%")
-                text  = f"**Нәтиже:** {label} — **{score}%**\n\n"
-                text += "🧠 **Талдау:** HuggingFace AI-image-detector нейросеті\n\n"
-                text += "⚠️ *Сурет анализі 100% дәл емес.*"
-                return {'score': score, 'verdict': verdict, 'label': label, 'text': text}
-            elif resp.status_code == 503:
-                print("⏳ HF Image жүктелуде...")
+                choice  = resp.json()['choices'][0]
+                content = choice.get('message', {}).get('content', '') or ''
+                reasoning = choice.get('message', {}).get('reasoning', '') or ''
+                # Екеуін біріктір — JSON қайда болса да табамыз
+                full_text = content + ' ' + reasoning
+                m = re.search(r'"score"\s*:\s*(\d+)', full_text)
+                if m:
+                    score   = int(m.group(1))
+                    verdict = 'ai' if score > 52 else 'human'
+                    if verdict == 'ai':
+                        label = 'ЖИ жасаған сурет болуы мүмкін'
+                        result_label = label + ' — **' + str(score) + '%**'
+                    else:
+                        label = 'Нақты сурет'
+                        result_label = label + ' (ЖИ ықтималдылығы: **' + str(score) + '%**)'
+                    print('Vision (' + model.split('/')[-1] + '): ' + str(score) + '%')
+                    text  = '**Нәтиже:** ' + result_label + '\n\n'
+                    text += '**Талдау:** ' + model.split('/')[0].upper() + ' Vision моделі\n\n'
+                    text += '*Сурет анализі 100% дәл емес.*'
+                    return {'score': score, 'verdict': verdict, 'label': label, 'text': text}
+            elif resp.status_code == 429:
+                print('Rate limit (' + model + '), резервке...')
             else:
-                print(f"⚠️ HF Image: {resp.status_code}")
+                print('Vision қате ' + str(resp.status_code) + ' (' + model + ')')
             return None
         except Exception as e:
-            print(f"⚠️ HF Image қатесі: {e}")
+            print('Vision қатесі: ' + str(e))
             return None
 
-    def _analyze(self, path):
+    def _pillow_analyze(self, path):
         from PIL import Image
         img  = Image.open(path)
         w, h = img.size
         meta    = self._check_meta(img)
-        if img.mode != 'RGB':
-            img = img.convert('RGB')
+        if img.mode != 'RGB': img = img.convert('RGB')
         pixels  = list(img.getdata())
         color   = self._color_stats(pixels)
         entropy = self._entropy(pixels)
@@ -301,19 +307,19 @@ class ImageDetector:
         score   = int(meta*0.25 + color*0.20 + entropy*0.18 + edge*0.15 + sym*0.10 + fft*0.12)
         score   = max(5, min(95, score))
         verdict = 'ai' if score > 52 else 'human'
-        label   = '🤖 ЖИ жасаған сурет болуы мүмкін' if verdict == 'ai' else '✅ Нақты сурет'
+        label   = 'ЖИ жасаған сурет болуы мүмкін' if verdict == 'ai' else 'Нақты сурет'
         ind = []
-        if meta > 60:    ind.append('🔴 EXIF метадеректер жоқ немесе AI тегі бар')
-        if color > 60:   ind.append('🟡 Түс таралуы өте біркелкі (GAN белгісі)')
-        if entropy > 60: ind.append('🟡 Энтропия аномалиясы')
-        if edge > 60:    ind.append('🟡 Шеттер тым тегіс (Diffusion белгісі)')
-        if sym > 60:     ind.append('🟡 Жоғары симметрия (GAN белгісі)')
-        if fft > 60:     ind.append('🟡 Жиілік доменінде артефактілер (FFT)')
-        text  = f"**Нәтиже:** {label} — **{score}%**\n\n"
-        text += '\n'.join(ind) if ind else '🟢 Күдікті белгілер табылмады'
-        text += f"\n\n📐 **Өлшем:** {w}×{h} пиксель"
-        text += "\n📊 **Талданған:** EXIF · Түс · Энтропия · Шет · Симметрия · FFT"
-        text += "\n\n⚠️ *Сурет анализі 100% дәл емес.*"
+        if meta > 60:    ind.append('EXIF метадеректер жоқ немесе AI тегі бар')
+        if color > 60:   ind.append('Түс таралуы өте біркелкі (GAN белгісі)')
+        if entropy > 60: ind.append('Энтропия аномалиясы')
+        if edge > 60:    ind.append('Шеттер тым тегіс (Diffusion белгісі)')
+        if sym > 60:     ind.append('Жоғары симметрия (GAN белгісі)')
+        if fft > 60:     ind.append('Жиілік доменінде артефактілер (FFT)')
+        text  = '**Нәтиже:** ' + label + ' — **' + str(score) + '%**\n\n'
+        text += '\n'.join(ind) if ind else 'Күдікті белгілер табылмады'
+        text += '\n\n**Өлшем:** ' + str(w) + 'x' + str(h) + ' пиксель'
+        text += '\n**Талданған:** EXIF · Түс · Энтропия · Шет · Симметрия · FFT'
+        text += '\n\n*Сурет анализі 100% дәл емес.*'
         return {'score': score, 'verdict': verdict, 'label': label, 'text': text}
 
     def _check_meta(self, img):
@@ -359,7 +365,7 @@ class ImageDetector:
             diffs  = [sum(abs(a-b) for a,b in zip(pixels[y*W+x][:3], pixels[y*W+x+1][:3]))
                       for y in range(W-1) for x in range(W-1)]
             avg = sum(diffs) / len(diffs)
-            if avg < 6: return 75
+            if avg < 6:  return 75
             if avg < 12: return 58
             if avg < 25: return 38
             if avg > 85: return 62
@@ -408,21 +414,20 @@ class VideoDetector:
             return self._analyze(video_path, cv2, np)
         except ImportError:
             return {'score': 50, 'verdict': 'unknown',
-                    'label': '⚠️ OpenCV орнатылмаған',
-                    'text':  '`pip install opencv-python` командасын іске қосыңыз.'}
+                    'label': 'OpenCV орнатылмаған',
+                    'text':  'pip install opencv-python командасын іске қосыңыз.'}
         except Exception as e:
-            return {'score': 0, 'verdict': 'error', 'label': '❌ Қате', 'text': str(e)}
+            return {'score': 0, 'verdict': 'error', 'label': 'Қате', 'text': str(e)}
 
     def _analyze(self, path, cv2, np):
         cap   = cv2.VideoCapture(path)
         if not cap.isOpened():
-            return {'score': 0, 'verdict': 'error', 'label': '❌ Файл ашылмады', 'text': ''}
+            return {'score': 0, 'verdict': 'error', 'label': 'Файл ашылмады', 'text': ''}
         fps   = cap.get(cv2.CAP_PROP_FPS)
         total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         W     = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         H     = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         dur   = total / fps if fps > 0 else 0
-        # Максимум 100 кадр
         step  = max(1, total // 100)
         frames = []; idx = 0
         while True:
@@ -432,7 +437,7 @@ class VideoDetector:
             idx += 1
         cap.release()
         if len(frames) < 4:
-            return {'score': 50, 'verdict': 'unknown', 'label': '⚠️ Бейне тым қысқа', 'text': ''}
+            return {'score': 50, 'verdict': 'unknown', 'label': 'Бейне тым қысқа', 'text': ''}
 
         t  = self._temporal(frames, cv2, np)
         n  = self._noise(frames, cv2, np)
@@ -443,19 +448,19 @@ class VideoDetector:
         score   = int(t*0.30 + n*0.25 + fr*0.20 + a*0.15 + fc*0.10)
         score   = max(5, min(95, score))
         verdict = 'ai' if score > 52 else 'human'
-        label   = '🤖 Дипфейк болуы мүмкін' if verdict == 'ai' else '✅ Нақты бейне'
+        label   = 'Дипфейк болуы мүмкін' if verdict == 'ai' else 'Нақты бейне'
 
         ind = []
-        if t  > 60: ind.append('🔴 Кадрлар арасында уақыттық сәйкессіздік')
-        if n  > 60: ind.append('🟡 GAN-тәрізді шу аномалиясы')
-        if fr > 60: ind.append('🟡 Жиілік доменінде артефактілер (FFT)')
-        if a  > 60: ind.append('🟡 Блоктық артефактілер')
-        if fc > 60: ind.append('🟡 Бет аймағында аномалия')
+        if t  > 60: ind.append('Кадрлар арасында уақыттық сәйкессіздік')
+        if n  > 60: ind.append('GAN-тәрізді шу аномалиясы')
+        if fr > 60: ind.append('Жиілік доменінде артефактілер (FFT)')
+        if a  > 60: ind.append('Блоктық артефактілер')
+        if fc > 60: ind.append('Бет аймағында аномалия')
 
-        text  = f"**Нәтиже:** {label} — **{score}%**\n\n"
-        text += '\n'.join(ind) if ind else '🟢 Күдікті белгілер табылмады'
-        text += f"\n\n🎬 {dur:.1f}с | {fps:.0f} FPS | {W}×{H} | {len(frames)} кадр"
-        text += "\n\n⚠️ *Бейне анализі 100% дәл емес.*"
+        text  = '**Нәтиже:** ' + label + ' — **' + str(score) + '%**\n\n'
+        text += '\n'.join(ind) if ind else 'Күдікті белгілер табылмады'
+        text += '\n\n' + str(round(dur,1)) + 'с | ' + str(round(fps)) + ' FPS | ' + str(W) + 'x' + str(H) + ' | ' + str(len(frames)) + ' кадр'
+        text += '\n\n*Бейне анализі 100% дәл емес.*'
         return {'score': score, 'verdict': verdict, 'label': label, 'text': text}
 
     def _temporal(self, f, cv2, np):
