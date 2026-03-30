@@ -28,15 +28,15 @@ app.config['JWT_HEADER_NAME'] = 'Authorization'
 app.config['JWT_HEADER_TYPE'] = 'Bearer'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///kazai.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['MAX_CONTENT_LENGTH'] = 20 * 1024 * 1024  # 20 MB лимит
+app.config['MAX_CONTENT_LENGTH'] = 30 * 1024 * 1024  # 30 MB
 
 db.init_app(app)
 jwt = JWTManager(app)
 
 # Modules
-gov     = GovService()
-tutor   = KazakhTutor()
-detector = AIDetector()
+gov       = GovService()
+tutor     = KazakhTutor()
+detector  = AIDetector()
 ai_client = OpenRouterClient()
 
 # ─────────────────────────────────────
@@ -51,9 +51,9 @@ def index():
 # ─────────────────────────────────────
 @app.route('/api/auth/register', methods=['POST'])
 def register():
-    data = request.json
-    name  = data.get('name', '').strip()
-    email = data.get('email', '').strip().lower()
+    data = request.json or {}
+    name     = data.get('name', '').strip()
+    email    = data.get('email', '').strip().lower()
     password = data.get('password', '')
 
     if not name or not email or not password:
@@ -71,9 +71,10 @@ def register():
     token = create_access_token(identity=str(user.id))
     return jsonify({'token': token, 'user': user.to_dict()}), 201
 
+
 @app.route('/api/auth/login', methods=['POST'])
 def login():
-    data = request.json
+    data  = request.json or {}
     email = data.get('email', '').strip().lower()
     password = data.get('password', '')
 
@@ -84,10 +85,13 @@ def login():
     token = create_access_token(identity=str(user.id))
     return jsonify({'token': token, 'user': user.to_dict()})
 
+
 @app.route('/api/auth/me', methods=['GET'])
 @jwt_required(locations=["headers"])
 def me():
     user = User.query.get(int(get_jwt_identity()))
+    if not user:
+        return jsonify({'error': 'Пайдаланушы табылмады'}), 404
     return jsonify(user.to_dict())
 
 # ─────────────────────────────────────
@@ -97,37 +101,50 @@ def me():
 @jwt_required(locations=["headers"])
 def chat():
     user_id = int(get_jwt_identity())
-    user = User.query.get(user_id)
-    data = request.json
+    user    = User.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'Пайдаланушы табылмады'}), 404
 
+    # Күнделікті есептегішті тексер
+    user.reset_daily_if_needed()
+
+    data    = request.json or {}
     text    = data.get('text', '').strip()
-    module  = data.get('module', 'auto')  # auto | gov | tutor | det
+    module  = data.get('module', 'auto')
     chat_id = data.get('chat_id')
 
     if not text:
         return jsonify({'error': 'Мәтін жоқ'}), 400
-    
-    print(f"📨 Chat request: module={module}, text={text[:50]}, chat_id={chat_id}")
 
-    # Check daily limit for free users
-    # Тест режимі: лимит өшірілген
-    # if user.plan == 'free' and user.daily_count >= 20:
-    #     return jsonify({'error': 'limit', 'message': 'Бүгінгі лимит таусылды'}), 429
+    # Free plan лимит тексеру
+    if user.plan == 'free' and user.daily_count >= 20:
+        return jsonify({'error': 'limit', 'message': 'Бүгінгі лимит таусылды (20/20). Pro жоспарына ауысыңыз!'}), 429
 
-    # ── Route to the right module ──
+    print(f"📨 Chat: module={module}, user={user.email}, text={text[:60]!r}")
+
     response_data = {}
 
+    # ── Детектор режимі ──
     if module == 'det':
-        response_data = detector.analyze(text)
+        result = detector.analyze(text)
+        response_data = {
+            'verdict': result['verdict'],
+            'score':   result['score'],
+            'label':   result['label'],
+            'text':    result['text'],
+            'source':  'detector',
+        }
 
+    # ── Мемлекеттік қызметтер ──
     elif module == 'gov':
         result = gov.search(text)
         if result['confidence'] > 0.3:
-            response_data = {'text': result['answer'], 'source': 'gov_db'}
+            response_data = {'text': result['answer'], 'source': 'gov_db', 'title': result.get('title','')}
         else:
             ai_resp = ai_client.ask(text, context='gov')
             response_data = {'text': ai_resp, 'source': 'ai'}
 
+    # ── Қазақ тілі репетиторы ──
     elif module == 'tutor':
         result = tutor.analyze(text)
         if result['found']:
@@ -136,10 +153,20 @@ def chat():
             ai_resp = ai_client.ask(text, context='tutor')
             response_data = {'text': ai_resp, 'source': 'ai'}
 
-    else:  # auto
-        # Try to detect which module fits
+    # ── Авто — модульді анықтай ──
+    else:
         detected = _detect_module(text)
-        if detected == 'gov':
+
+        if detected == 'det':
+            result = detector.analyze(text)
+            response_data = {
+                'verdict': result['verdict'],
+                'score':   result['score'],
+                'label':   result['label'],
+                'text':    result['text'],
+                'source':  'detector',
+            }
+        elif detected == 'gov':
             result = gov.search(text)
             if result['confidence'] > 0.4:
                 response_data = {'text': result['answer'], 'source': 'gov_db'}
@@ -147,47 +174,67 @@ def chat():
                 response_data = {'text': ai_client.ask(text, context='gov'), 'source': 'ai'}
         elif detected == 'tutor':
             result = tutor.analyze(text)
-            response_data = {'text': result['answer'], 'source': 'tutor_db'}
+            if result['found']:
+                response_data = {'text': result['answer'], 'source': 'tutor_db'}
+            else:
+                response_data = {'text': ai_client.ask(text, context='tutor'), 'source': 'ai'}
         else:
             response_data = {'text': ai_client.ask(text, context='general'), 'source': 'ai'}
 
-    # ── Save to DB ──
+    # ── DB-ге сақтау ──
     if not chat_id:
-        title = text[:40] + ('…' if len(text) > 40 else '')
+        title = text[:45] + ('…' if len(text) > 45 else '')
         new_chat = Chat(user_id=user_id, title=title)
         db.session.add(new_chat)
         db.session.flush()
         chat_id = new_chat.id
 
-    db.session.add(Message(chat_id=chat_id, role='user', content=text, module=module))
-    db.session.add(Message(chat_id=chat_id, role='assistant',
-                           content=response_data.get('text', ''), module=module))
+    # Хабарлар сақтау
+    user_msg = Message(chat_id=chat_id, role='user', content=text, module=module)
+    # Детектор жауабы үшін арнайы сақтау
+    assistant_content = response_data.get('text', '')
+    if response_data.get('verdict'):
+        # Детектор нәтижесін JSON ретінде сақтаймыз
+        import json as _json
+        assistant_content = _json.dumps({
+            'verdict': response_data['verdict'],
+            'score':   response_data['score'],
+            'label':   response_data['label'],
+            'text':    response_data['text'],
+        }, ensure_ascii=False)
+    bot_msg = Message(chat_id=chat_id, role='assistant', content=assistant_content, module=module)
 
-    user.daily_count += 1
+    db.session.add(user_msg)
+    db.session.add(bot_msg)
+
+    user.daily_count   += 1
     user.total_messages += 1
     db.session.commit()
 
     return jsonify({
         'response': response_data,
-        'chat_id': chat_id,
-        'usage': {'today': user.daily_count, 'limit': 20 if user.plan == 'free' else None}
+        'chat_id':  chat_id,
+        'usage':    {
+            'today': user.daily_count,
+            'limit': 20 if user.plan == 'free' else None,
+        },
     })
 
-def _detect_module(text):
-    """Simple keyword router."""
-    text_lower = text.lower()
-    gov_keys = ['иин', 'эцп', 'паспорт', 'жәрдемақы', 'egov', 'дәрігер',
-                'автокөлік', 'тіркеу', 'мемлекеттік', 'қызмет']
-    tutor_keys = ['тексер', 'грамматика', 'аудар', 'қате', 'сөйлем',
-                  'жіктеу', 'айтылым', 'барды', 'бардым']
-    det_keys = ['жасанды ма', 'ии жасады', 'анықта', 'generated', 'chatgpt жазды']
 
-    if any(k in text_lower for k in det_keys):
-        return 'det'
-    if any(k in text_lower for k in gov_keys):
-        return 'gov'
-    if any(k in text_lower for k in tutor_keys):
-        return 'tutor'
+def _detect_module(text: str) -> str:
+    """Сұрақ бойынша модульді анықтау"""
+    t = text.lower()
+
+    det_keys   = ['жасанды ма', 'жасанды интеллект жазды', 'ии жазды', 'chatgpt жазды',
+                  'анықта', 'детектор', 'ai generated', 'generated', 'тексер мәтін']
+    gov_keys   = ['иин', 'эцп', 'паспорт', 'жәрдемақы', 'egov', 'дәрігер', 'поликлиника',
+                  'автокөлік', 'тіркеу', 'мемлекеттік қызмет', 'цон', 'жеке куәлік']
+    tutor_keys = ['грамматика', 'аудар', 'сөйлемді тексер', 'қате бар', 'дұрыс па',
+                  'жіктеу', 'айтылым', 'барды', 'бардым', 'септік']
+
+    if any(k in t for k in det_keys):   return 'det'
+    if any(k in t for k in gov_keys):   return 'gov'
+    if any(k in t for k in tutor_keys): return 'tutor'
     return 'general'
 
 # ─────────────────────────────────────
@@ -197,16 +244,38 @@ def _detect_module(text):
 @jwt_required(locations=["headers"])
 def history():
     user_id = int(get_jwt_identity())
-    chats = Chat.query.filter_by(user_id=user_id).order_by(Chat.created_at.desc()).limit(50).all()
+    chats = Chat.query.filter_by(user_id=user_id)\
+        .order_by(Chat.created_at.desc()).limit(50).all()
     return jsonify([c.to_dict() for c in chats])
+
 
 @app.route('/api/history/<int:chat_id>/messages', methods=['GET'])
 @jwt_required(locations=["headers"])
 def chat_messages(chat_id):
     user_id = int(get_jwt_identity())
     chat = Chat.query.filter_by(id=chat_id, user_id=user_id).first_or_404()
-    msgs = Message.query.filter_by(chat_id=chat.id).order_by(Message.created_at).all()
-    return jsonify([m.to_dict() for m in msgs])
+    msgs = Message.query.filter_by(chat_id=chat.id)\
+        .order_by(Message.created_at).all()
+    result = []
+    for m in msgs:
+        d = m.to_dict()
+        # Детектор хабарларын parse қылу
+        if m.role == 'assistant' and m.module in ('det', 'auto'):
+            try:
+                import json as _json
+                parsed = _json.loads(m.content)
+                if isinstance(parsed, dict) and 'verdict' in parsed:
+                    d['content'] = parsed.get('text', m.content)
+                    d['det_data'] = {
+                        'verdict': parsed['verdict'],
+                        'score':   parsed['score'],
+                        'label':   parsed.get('label',''),
+                    }
+            except Exception:
+                pass
+        result.append(d)
+    return jsonify(result)
+
 
 @app.route('/api/history/<int:chat_id>', methods=['DELETE'])
 @jwt_required(locations=["headers"])
@@ -225,7 +294,9 @@ def delete_chat(chat_id):
 @jwt_required(locations=["headers"])
 def upgrade():
     user_id = int(get_jwt_identity())
-    plan = request.json.get('plan', 'pro')
+    plan    = request.json.get('plan', 'pro')
+    if plan not in ('free', 'pro', 'ultra'):
+        return jsonify({'error': 'Жарамсыз жоспар'}), 400
     user = User.query.get(user_id)
     user.plan = plan
     db.session.commit()
@@ -238,13 +309,13 @@ def upgrade():
 @jwt_required(locations=["headers"])
 def stats():
     user = User.query.get(int(get_jwt_identity()))
+    user.reset_daily_if_needed()
     return jsonify({
         'total_messages': user.total_messages,
-        'daily_count': user.daily_count,
-        'plan': user.plan,
-        'member_since': user.created_at.isoformat()
+        'daily_count':    user.daily_count,
+        'plan':           user.plan,
+        'member_since':   user.created_at.isoformat(),
     })
-
 
 # ─────────────────────────────────────
 # СУРЕТ ДЕТЕКТОРЫ
@@ -257,12 +328,27 @@ def detect_image():
     file = request.files['file']
     if not file.filename:
         return jsonify({'error': 'Файл таңдалмаған'}), 400
+
+    # Файл типін тексеру
+    allowed = {'jpg','jpeg','png','webp','gif','bmp'}
+    ext = file.filename.rsplit('.', 1)[-1].lower()
+    if ext not in allowed:
+        return jsonify({'error': f'Рұқсат берілген форматтар: {", ".join(allowed)}'}), 400
+
     import tempfile, os as _os
-    suffix = _os.path.splitext(file.filename)[1] or '.jpg'
+    suffix = '.' + ext
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         file.save(tmp.name)
-        result = detector.analyze_image(tmp.name)
-    _os.unlink(tmp.name)
+        tmp_path = tmp.name
+
+    try:
+        result = detector.analyze_image(tmp_path)
+    finally:
+        try:
+            _os.unlink(tmp_path)
+        except Exception:
+            pass
+
     return jsonify({'response': result, 'chat_id': None})
 
 # ─────────────────────────────────────
@@ -276,13 +362,34 @@ def detect_video():
     file = request.files['file']
     if not file.filename:
         return jsonify({'error': 'Файл таңдалмаған'}), 400
+
+    allowed = {'mp4','avi','mov','mkv','webm'}
+    ext = file.filename.rsplit('.', 1)[-1].lower()
+    if ext not in allowed:
+        return jsonify({'error': f'Рұқсат берілген форматтар: {", ".join(allowed)}'}), 400
+
     import tempfile, os as _os
-    suffix = _os.path.splitext(file.filename)[1] or '.mp4'
+    suffix = '.' + ext
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         file.save(tmp.name)
-        result = detector.analyze_video(tmp.name)
-    _os.unlink(tmp.name)
+        tmp_path = tmp.name
+
+    try:
+        result = detector.analyze_video(tmp_path)
+    finally:
+        try:
+            _os.unlink(tmp_path)
+        except Exception:
+            pass
+
     return jsonify({'response': result, 'chat_id': None})
+
+# ─────────────────────────────────────
+# HEALTH CHECK
+# ─────────────────────────────────────
+@app.route('/api/health', methods=['GET'])
+def health():
+    return jsonify({'status': 'ok', 'version': '2.0'})
 
 # ─────────────────────────────────────
 # INIT DB + RUN
