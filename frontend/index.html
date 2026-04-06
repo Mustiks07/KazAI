@@ -75,11 +75,11 @@
       <div class="setting-row">
         <div class="setting-info"><div class="setting-name">Акцент түсі</div><div class="setting-desc">Интерфейстің негізгі түсі</div></div>
         <div class="accent-picker">
-          <div class="accent-dot active" style="background:linear-gradient(135deg,#3b82f6,#7c3aed)" onclick="setAccent('blue','#3b82f6','#7c3aed')"></div>
-          <div class="accent-dot" style="background:linear-gradient(135deg,#10b981,#06b6d4)" onclick="setAccent('green','#10b981','#06b6d4')"></div>
-          <div class="accent-dot" style="background:linear-gradient(135deg,#f59e0b,#ef4444)" onclick="setAccent('amber','#f59e0b','#ef4444')"></div>
-          <div class="accent-dot" style="background:linear-gradient(135deg,#ec4899,#8b5cf6)" onclick="setAccent('pink','#ec4899','#8b5cf6')"></div>
-          <div class="accent-dot" style="background:linear-gradient(135deg,#14b8a6,#3b82f6)" onclick="setAccent('teal','#14b8a6','#3b82f6')"></div>
+          <div class="accent-dot active" style="background:linear-gradient(135deg,#3b82f6,#7c3aed)" onclick="setAccent('blue','#3b82f6','#7c3aed',this)"></div>
+          <div class="accent-dot" style="background:linear-gradient(135deg,#10b981,#06b6d4)" onclick="setAccent('green','#10b981','#06b6d4',this)"></div>
+          <div class="accent-dot" style="background:linear-gradient(135deg,#f59e0b,#ef4444)" onclick="setAccent('amber','#f59e0b','#ef4444',this)"></div>
+          <div class="accent-dot" style="background:linear-gradient(135deg,#ec4899,#8b5cf6)" onclick="setAccent('pink','#ec4899','#8b5cf6',this)"></div>
+          <div class="accent-dot" style="background:linear-gradient(135deg,#14b8a6,#3b82f6)" onclick="setAccent('teal','#14b8a6','#3b82f6',this)"></div>
         </div>
       </div>
       <div class="setting-row">
@@ -249,7 +249,7 @@
           </div>
           <div>
             <div class="w-title" id="wTitle">KazAI-ға қош келдіңіз</div>
-            <div class="w-sub">Қазақ тіліндегі алғашқы көпмодальды ЖИ көмекші.</div>
+            <div class="w-sub">Қазақстан азаматтарына арналған AI көмекші — мемлекеттік қызметтер, қазақ тілі, AI детектор.</div>
           </div>
           <div class="w-grid">
             <div class="w-card" onclick="setMod('gov',document.getElementById('btn-gov'))">
@@ -257,22 +257,27 @@
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
               </div>
               <div class="w-ct">Мемлекеттік қызметтер</div>
-              <div class="w-cd">ИИН, ЭЦП, жәрдемақы, паспорт</div>
+              <div class="w-cd">ИИН, ЭЦП, паспорт, жәрдемақы, ЦОН, eGov</div>
             </div>
-            <div class="w-card" onclick="quick('Мына сөйлемді тексер: Мен мектепке барды')">
+            <div class="w-card" onclick="setMod('tutor',document.getElementById('btn-tutor'))">
               <div class="w-ci" style="background:rgba(245,158,11,.1)">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
               </div>
               <div class="w-ct">Қазақ тілі</div>
-              <div class="w-cd">Грамматика, емле, аударма</div>
+              <div class="w-cd">Грамматика, емле, аударма, септіктер</div>
             </div>
             <div class="w-card" onclick="setMod('det',document.getElementById('btn-det'));document.getElementById('inp').focus()">
               <div class="w-ci" style="background:rgba(239,68,68,.1)">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
               </div>
               <div class="w-ct">ЖИ анықтауы</div>
-              <div class="w-cd">Мәтін, сурет, бейне тексеру</div>
+              <div class="w-cd">Мәтін, сурет, бейне — AI жазды ма?</div>
             </div>
+          </div>
+          <div class="w-examples">
+            <div class="w-example" onclick="quick('ИИН алу үшін не қажет?')">ИИН алу үшін не қажет?</div>
+            <div class="w-example" onclick="quick('Мына сөйлемді тексер: Мен мектепке барды')">Сөйлемді тексер: Мен мектепке барды</div>
+            <div class="w-example" onclick="quick('Алматы қаласының тарихы туралы айтып бер')">Алматы тарихы туралы</div>
           </div>
         </div>
       </div>

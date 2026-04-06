@@ -321,6 +321,9 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
 .w-ci{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-bottom:8px}
 .w-ct{font-size:12px;font-weight:600;color:var(--hi);margin-bottom:3px}
 .w-cd{font-size:11px;color:var(--dim);line-height:1.5;font-weight:300}
+.w-examples{display:flex;flex-wrap:wrap;gap:7px;width:100%;justify-content:center;margin-top:8px}
+.w-example{padding:7px 14px;background:var(--surface);border:1px solid var(--border);border-radius:20px;font-size:12px;color:var(--dim);cursor:pointer;transition:all .15s;font-family:'Outfit',sans-serif}
+.w-example:hover{border-color:rgba(59,130,246,.3);color:#93c5fd;background:rgba(59,130,246,.04)}
 
 /* Messages */
 .msg{display:flex;flex-direction:column;animation:mi .2s ease}
@@ -408,6 +411,8 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
   .msgs-wrap{padding:16px 12px 8px}
   .msg-row{max-width:95%!important}
   .w-grid{grid-template-columns:1fr!important;gap:8px}
+  .w-examples{flex-direction:column;align-items:stretch}
+  .w-example{text-align:center}
   .w-title{font-size:18px!important}
   .input-zone{padding:8px 10px 12px}
   .chat-hdr{padding:0 12px;height:48px}
@@ -417,9 +422,12 @@ html,body{height:100%;font-family:'Outfit',sans-serif;background:var(--bg);color
   #toasts{bottom:80px;right:10px;left:10px}
   .toast{max-width:100%}
   .auth-card{margin:16px;border-radius:16px;padding:28px 24px}
+  .gov-faq-grid{gap:5px}
+  .gov-faq-chip{padding:6px 10px;font-size:12px}
 }
 @media(max-width:480px){
   .w-grid{grid-template-columns:1fr!important}
   .iacts{gap:1px}
   .ia,.sbtn{width:28px;height:28px}
+  .w-sub{font-size:12px}
 }

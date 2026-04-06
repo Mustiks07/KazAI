@@ -37,6 +37,11 @@ const GOV_FAQ = [
   {icon:'📱', text:'eGov Mobile',           q:'eGov Mobile қосымшасын қалай пайдалану?'},
   {icon:'⚖️', text:'Жол айыппұлы',          q:'Жол айыппұлдарын тексеру және төлеу?'},
   {icon:'🏦', text:'Зейнетақы ЕНПФ',        q:'Зейнетақы ЕНПФ жинақтарымды қалай тексеремін?'},
+  {icon:'🎓', text:'ЕНТ тіркелу',           q:'ЕНТ-ге қалай тіркелуге болады?'},
+  {icon:'🏡', text:'Тұрғын үй бағдарламасы',q:'Тұрғын үй бағдарламасына қалай қатысуға болады?'},
+  {icon:'📋', text:'Салық декларация',       q:'Салық декларациясын қалай тапсыруға болады?'},
+  {icon:'🚕', text:'Жүргізу куәлігі',       q:'Жүргізу куәлігін қалай алуға болады?'},
+  {icon:'👨‍👩‍👧', text:'Бала асырап алу',      q:'Бала асырап алу үшін қандай құжаттар қажет?'},
 ];
 
 // ════════════════════════════════════
@@ -177,9 +182,9 @@ function toggleThemeQuick() {
   setTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
 }
 
-function setAccent(name, c1, c2) {
+function setAccent(name, c1, c2, el) {
   document.querySelectorAll('.accent-dot').forEach(d => d.classList.remove('active'));
-  event.target.classList.add('active');
+  if (el) el.classList.add('active');
   document.documentElement.style.setProperty('--blue', c1);
   document.documentElement.style.setProperty('--grad', `linear-gradient(135deg,${c1},${c2})`);
   showToast('Акцент түсі өзгертілді', 'info');
@@ -326,10 +331,10 @@ function renderDetectorCard(score, text) {
 // MESSAGES
 // ════════════════════════════════════
 const chipM = {
-  all:   ['Мемл. қызметтер', 'Қазақ тілі', 'ЖИ анықтауы'],
-  gov:   ['ЭЦП алу', 'Жәрдемақы', 'Паспорт алу'],
-  tutor: ['Сөйлемді тексер', 'Грамматика', 'Аударма'],
-  det:   ['Басқа мәтін тексер'],
+  all:   ['ИИН алу қалай?', 'Сөйлемді тексер', 'Алматы туралы айтып бер'],
+  gov:   ['ЭЦП алу қалай?', 'Паспорт жаңарту', 'Балаға жәрдемақы', 'eGov Mobile'],
+  tutor: ['Септіктер ережесі', 'Аудар: привет', 'Жіктеулік жалғау', 'Буын үндестігі'],
+  det:   ['Басқа мәтінді тексер'],
 };
 
 function addMsg(content, isUser, msgMod, detData) {
@@ -351,7 +356,10 @@ function addMsg(content, isUser, msgMod, detData) {
 
   const aM = msgMod || mod;
   const chips = (!isUser && chipM[aM])
-    ? `<div class="chips">${chipM[aM].map(c => `<span class="chip" onclick="quick('${c}')">${c}</span>`).join('')}</div>` : '';
+    ? `<div class="chips">${chipM[aM].map(c => {
+        const safe = c.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        return `<span class="chip" onclick="quick('${safe}')">${c}</span>`;
+      }).join('')}</div>` : '';
   const actBtns = !isUser
     ? `<div class="msg-actions">
         <button class="msg-act-btn" onclick="copyMsg(this)">
@@ -443,7 +451,7 @@ async function send() {
   } catch(e) {
     rmTyping();
     showToast('Сервер қатесі: ' + e.message, 'error');
-    addMsg('❌ Серверге қосылу мүмкін болмады. Flask сервері іске қосылған ба?', false, mod);
+    addMsg('Кешіріңіз, серверге қосылу мүмкін болмады. Интернетті тексеріңіз немесе кейінірек қайталап көріңіз.', false, mod);
   }
   document.getElementById('sendBtn').disabled = false;
 }
@@ -459,7 +467,12 @@ function _handleResponse(data, msgMod) {
       verdict: resp.verdict || (resp.score >= 50 ? 'ai' : 'human'),
     });
   } else {
-    addMsg(resp.text || resp.answer || '...', false, msgMod);
+    let text = resp.text || resp.answer || '...';
+    // Gov модулі — дереккөз URL қосу
+    if (resp.source === 'gov_db' && resp.source_url) {
+      text += `\n\n🔗 [Толығырақ: egov.kz](${resp.source_url})`;
+    }
+    addMsg(text, false, msgMod);
   }
 }
 

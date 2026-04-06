@@ -1,137 +1,94 @@
-# KazAI — Қазақ тіліндегі ЖИ көмекші
+# KazAI — Қазақ тіліндегі AI көмекші
 
-## 🗂 Жоба құрылымы
+Қазақстан азаматтарына арналған көпмодальды жасанды интеллект көмекші.
 
-```
-kazai/
-├── backend/
-│   ├── app.py              ← Flask сервер (негізгі файл)
-│   ├── database.py         ← SQLite модельдер
-│   ├── modules/
-│   │   ├── openrouter.py   ← OpenRouter API клиенті
-│   │   ├── gov_service.py  ← Мемлекеттік қызметтер (TF-IDF)
-│   │   ├── tutor.py        ← Қазақ тілі репетиторы
-│   │   └── detector.py     ← ЖИ контент детекторы
-│   └── data/
-│       ├── gov_faq.json    ← 15+ мемлекеттік қызмет FAQ
-│       ├── grammar_rules.json ← 8 грамматика ережесі
-│       └── kazakh_vocab.json  ← сөздік (қосымша)
-├── frontend/
-│   └── kazai.html          ← UI (барлығы бір файлда)
-├── requirements.txt
-├── render.yaml             ← Render.com деплой конфиги
-├── .env.example            ← .env үлгісі
-└── README.md
-```
+## Мүмкіндіктер
 
----
+### 1. Жалпы чат
+- Кез-келген сұрақтарға қазақша/орысша жауап
+- Чат контексті — AI алдыңғы хабарларды есте сақтайды
+- 8 AI модельмен fallback жүйесі (Gemini, Llama, DeepSeek, Qwen)
 
-## 🚀 Жергілікті іске қосу (Windows)
+### 2. Мемлекеттік қызметтер
+- 80+ FAQ жазба — ИИН, ЭЦП, паспорт, жәрдемақы, салық, т.б.
+- TF-IDF + кілт сөздер гибридті іздеу жүйесі
+- egov.kz сілтемелерімен толық нұсқаулықтар
+- Табылмаса — AI толықтырады
 
-### 1. Python виртуал ортасын жасаңыз
+### 3. Қазақ тілі репетиторы
+- 30+ грамматика ережесі (септіктер, жіктеу, жұрнақтар, емле)
+- 250+ сөздік (қазақша ↔ орысша)
+- Сөйлем тексеру — қателерді тауып, түзетеді
+- Аударма функциясы
+
+### 4. AI детекторы
+- Мәтінді тексеру — адам жазды ма, AI жазды ма?
+- Сурет және бейне анализі
+- LLM-as-Judge + RoBERTa + статистикалық анализ
+
+## Технологиялар
+
+| Қабат | Технологиялар |
+|-------|---------------|
+| Backend | Python 3.11, Flask 3.0, SQLAlchemy |
+| AI | OpenRouter API (Gemini, Llama, DeepSeek, Qwen) |
+| ML | scikit-learn (TF-IDF), HuggingFace (RoBERTa) |
+| Frontend | Vanilla JS, CSS Custom Properties |
+| Деректер қоры | SQLite |
+| Деплой | Render.com, Gunicorn |
+
+## Жергілікті іске қосу
+
 ```bash
-cd kazai
+# 1. Виртуал ортаны жасау
 python -m venv venv
-venv\Scripts\activate
-```
+source venv/bin/activate  # Linux/Mac
+# venv\Scripts\activate   # Windows
 
-### 2. Тәуелділіктерді орнатыңыз
-```bash
+# 2. Тәуелділіктерді орнату
 pip install -r requirements.txt
-```
 
-### 3. .env файлын жасаңыз
-```bash
-copy .env.example .env
-```
-`.env` файлын ашып, өз OpenRouter API кілтіңізді жазыңыз:
-```
-OPENROUTER_API_KEY=sk-or-v1-ваш-ключ-здесь
-```
+# 3. .env файлын жасау
+cp .env.example .env
+# .env файлын ашып OPENROUTER_API_KEY жазыңыз
 
-### 4. Іске қосыңыз
-```bash
+# 4. Іске қосу
 cd backend
 python app.py
 ```
 
-✅ Браузерде ашыңыз: **http://localhost:5000**
+Браузерде: **http://localhost:5000**
 
----
-
-## 🌐 Render.com деплой (интернетке шығару)
-
-### 1. GitHub-қа жүктеңіз
-```bash
-git init
-git add .
-git commit -m "Initial KazAI commit"
-git remote add origin https://github.com/СІЗДІҢ_АККАУНТ/kazai.git
-git push -u origin main
-```
-
-### 2. Render.com-да жаңа сервис жасаңыз
-1. render.com → New → Web Service
-2. GitHub репоны байланыстырыңыз
-3. Environment Variables қосыңыз:
-   - `OPENROUTER_API_KEY` = сіздің кілт
-   - `SECRET_KEY` = кез-келген ұзын string
-   - `JWT_SECRET` = кез-келген ұзын string
-4. Deploy!
-
-5-10 минуттан кейін:  
-**https://kazai.onrender.com** — сіздің URL!
-
----
-
-## ⚙️ API эндпоинттері
+## API
 
 | Метод | URL | Сипаттама |
 |-------|-----|-----------|
 | POST | `/api/auth/register` | Тіркелу |
 | POST | `/api/auth/login` | Кіру |
 | GET | `/api/auth/me` | Профиль |
-| POST | `/api/chat` | Чат (негізгі) |
-| GET | `/api/history` | Тарих |
-| DELETE | `/api/history/:id` | Тарихты жою |
-| POST | `/api/subscription` | Жоспарды өзгерту |
+| POST | `/api/chat` | Чат (контекстпен) |
+| GET | `/api/history` | Чат тарихы |
+| DELETE | `/api/history/:id` | Чатты жою |
+| POST | `/api/detect/image` | Сурет анализі |
+| POST | `/api/detect/video` | Бейне анализі |
 | GET | `/api/stats` | Статистика |
+| GET | `/api/health` | Сервер күйі |
 
----
-
-## 🧠 Архитектура
+## Архитектура
 
 ```
 Пайдаланушы сұрағы
        ↓
-Flask роутер (_detect_module)
+Flask роутер (_detect_module) — кеңейтілген keyword scoring
        ↓
-┌──────────────────────────────┐
-│ Мемлекеттік қызмет сұрағы?  │ → gov_service.py (TF-IDF)
-│ Грамматика сұрағы?           │ → tutor.py (ережелер)
-│ ЖИ анықтау?                  │ → detector.py (статистика)
-│ Жалпы сұрақ?                 │ → OpenRouter API (Gemini/Llama)
-└──────────────────────────────┘
+┌──────────────────────────────────────────┐
+│ Мемлекеттік қызмет?  → TF-IDF + keywords │
+│ Грамматика сұрағы?   → Ережелер + морфология │
+│ AI анықтау?          → LLM-Judge + RoBERTa │
+│ Жалпы сұрақ?         → OpenRouter (8 модель) │
+└──────────────────────────────────────────┘
        ↓
-SQLite-ге сақтау
+LRU кэш (30 мин) → SQLite сақтау
        ↓
-JSON жауап фронтке
+JSON жауап (контекстпен)
 ```
-
----
-
-## 📚 Конференция үшін маңызды
-
-**Техникалық үлес:**
-- Өз TF-IDF іздеу алгоритмі (sklearn)
-- Морфологиялық талдау (туtor.py)
-- Статистикалық ЖИ детектор (detector.py)
-- Гибридті архитектура (өз модульдер + LLM)
-
-**Қолданылған технологиялар:**
-- Python 3.11, Flask 3.0
-- SQLite (деректер қоры)
-- scikit-learn (ML)
-- OpenRouter API (LLM)
-- JWT (авторизация)
-- Render.com (деплой)

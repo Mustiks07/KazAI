@@ -2,12 +2,22 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 import os
+import json
+import logging
 from datetime import timedelta
 from dotenv import load_dotenv
 
 # .env жүктеу
 load_dotenv()
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../.env"))
+
+# Логирование
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    datefmt='%H:%M:%S'
+)
+logger = logging.getLogger(__name__)
 
 from database import db, User, Chat, Message
 from modules.gov_service import GovService
@@ -20,9 +30,11 @@ app = Flask(__name__, static_folder='../frontend', static_url_path='')
 CORS(app)
 
 # Config
-app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'kazai-secret-2024')
-app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET', 'kazai-jwt-2024')
-app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=30)
+import secrets
+_default_secret = secrets.token_hex(32)
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', _default_secret)
+app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET', _default_secret)
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=7)
 app.config['JWT_TOKEN_LOCATION'] = ['headers']
 app.config['JWT_HEADER_NAME'] = 'Authorization'
 app.config['JWT_HEADER_TYPE'] = 'Bearer'
@@ -120,9 +132,18 @@ def chat():
     if user.plan == 'free' and user.daily_count >= 20:
         return jsonify({'error': 'limit', 'message': 'Бүгінгі лимит таусылды (20/20). Pro жоспарына ауысыңыз!'}), 429
 
-    print(f"📨 Chat: module={module}, user={user.email}, text={text[:60]!r}")
+    logger.info("Chat: module=%s, user=%s, text=%r", module, user.email, text[:60])
 
     response_data = {}
+
+    # Чат контекстін жүктеу (AI алдыңғы хабарларды есте сақтасын)
+    chat_history = []
+    if chat_id:
+        prev_msgs = Message.query.filter_by(chat_id=chat_id)\
+            .order_by(Message.created_at).all()
+        for m in prev_msgs[-10:]:  # Соңғы 10 хабар
+            if m.content and m.role in ('user', 'assistant'):
+                chat_history.append({'role': m.role, 'content': m.content})
 
     # ── Детектор режимі ──
     if module == 'det':
@@ -139,9 +160,14 @@ def chat():
     elif module == 'gov':
         result = gov.search(text)
         if result['confidence'] > 0.3:
-            response_data = {'text': result['answer'], 'source': 'gov_db', 'title': result.get('title','')}
+            response_data = {
+                'text': result['answer'],
+                'source': 'gov_db',
+                'title': result.get('title', ''),
+                'source_url': result.get('source_url', ''),
+            }
         else:
-            ai_resp = ai_client.ask(text, context='gov')
+            ai_resp = ai_client.ask(text, context='gov', chat_history=chat_history)
             response_data = {'text': ai_resp, 'source': 'ai'}
 
     # ── Қазақ тілі репетиторы ──
@@ -150,7 +176,7 @@ def chat():
         if result['found']:
             response_data = {'text': result['answer'], 'source': 'tutor_db'}
         else:
-            ai_resp = ai_client.ask(text, context='tutor')
+            ai_resp = ai_client.ask(text, context='tutor', chat_history=chat_history)
             response_data = {'text': ai_resp, 'source': 'ai'}
 
     # ── Авто — модульді анықтай ──
@@ -171,15 +197,15 @@ def chat():
             if result['confidence'] > 0.4:
                 response_data = {'text': result['answer'], 'source': 'gov_db'}
             else:
-                response_data = {'text': ai_client.ask(text, context='gov'), 'source': 'ai'}
+                response_data = {'text': ai_client.ask(text, context='gov', chat_history=chat_history), 'source': 'ai'}
         elif detected == 'tutor':
             result = tutor.analyze(text)
             if result['found']:
                 response_data = {'text': result['answer'], 'source': 'tutor_db'}
             else:
-                response_data = {'text': ai_client.ask(text, context='tutor'), 'source': 'ai'}
+                response_data = {'text': ai_client.ask(text, context='tutor', chat_history=chat_history), 'source': 'ai'}
         else:
-            response_data = {'text': ai_client.ask(text, context='general'), 'source': 'ai'}
+            response_data = {'text': ai_client.ask(text, context='general', chat_history=chat_history), 'source': 'ai'}
 
     # ── DB-ге сақтау ──
     if not chat_id:
@@ -195,8 +221,7 @@ def chat():
     assistant_content = response_data.get('text', '')
     if response_data.get('verdict'):
         # Детектор нәтижесін JSON ретінде сақтаймыз
-        import json as _json
-        assistant_content = _json.dumps({
+        assistant_content = json.dumps({
             'verdict': response_data['verdict'],
             'score':   response_data['score'],
             'label':   response_data['label'],
@@ -222,19 +247,52 @@ def chat():
 
 
 def _detect_module(text: str) -> str:
-    """Сұрақ бойынша модульді анықтау"""
+    """Сұрақ бойынша модульді анықтау — кеңейтілген"""
     t = text.lower()
 
-    det_keys   = ['жасанды ма', 'жасанды интеллект жазды', 'ии жазды', 'chatgpt жазды',
-                  'анықта', 'детектор', 'ai generated', 'generated', 'тексер мәтін']
-    gov_keys   = ['иин', 'эцп', 'паспорт', 'жәрдемақы', 'egov', 'дәрігер', 'поликлиника',
-                  'автокөлік', 'тіркеу', 'мемлекеттік қызмет', 'цон', 'жеке куәлік']
-    tutor_keys = ['грамматика', 'аудар', 'сөйлемді тексер', 'қате бар', 'дұрыс па',
-                  'жіктеу', 'айтылым', 'барды', 'бардым', 'септік']
+    det_keys = [
+        'жасанды ма', 'жасанды интеллект жазды', 'ии жазды', 'chatgpt жазды',
+        'анықта', 'детектор', 'ai generated', 'generated', 'тексер мәтін',
+        'нейросеть жазды', 'gpt жазды', 'робот жазды', 'ai жазды',
+        'ии тексер', 'жасанды интеллект пен', 'адам жазды ма',
+    ]
+    gov_keys = [
+        'иин', 'эцп', 'паспорт', 'жәрдемақы', 'egov', 'дәрігер', 'поликлиника',
+        'автокөлік', 'тіркеу', 'мемлекеттік қызмет', 'цон', 'жеке куәлік',
+        'загс', 'неке', 'туу туралы', 'балаға', 'зейнетақы', 'енпф',
+        'жұмыссыздық', 'айыппұл', 'салық', 'жер учаске', 'лицензия',
+        'анықтама', 'прописка', 'тіркеу анықтама', 'әскерге', 'шақыру қағаз',
+        'декрет', 'мүгедектік', 'әлеуметтік', 'тұрғын үй', 'субсидия',
+        'нотариус', 'сенімхат', 'мұрагерлік', 'азаматтық', 'кәсіпкер',
+        'жеке кәсіпкер', 'тоо', 'жк ашу', 'бизнес ашу',
+        '1414', 'электрондық үкімет',
+    ]
+    tutor_keys = [
+        'грамматика', 'аудар', 'сөйлемді тексер', 'қате бар', 'дұрыс па',
+        'жіктеу', 'айтылым', 'барды', 'бардым', 'септік',
+        'қазақша', 'қазақ тілі', 'ереже', 'жалғау', 'жұрнақ',
+        'көмектес етістік', 'есімше', 'көсемше', 'шылау',
+        'сөйлем мүшесі', 'бастауыш', 'баяндауыш',
+        'емле', 'дыбыс', 'буын', 'орфография',
+        'мәтінді тексер', 'translate', 'перевод', 'аударма',
+        'қалай жазылады', 'қалай айтылады', 'не деген сөз',
+    ]
 
-    if any(k in t for k in det_keys):   return 'det'
-    if any(k in t for k in gov_keys):   return 'gov'
-    if any(k in t for k in tutor_keys): return 'tutor'
+    # Сәйкестік санын тексеру — көп сәйкес болған модуль таңдалады
+    det_score = sum(1 for k in det_keys if k in t)
+    gov_score = sum(1 for k in gov_keys if k in t)
+    tutor_score = sum(1 for k in tutor_keys if k in t)
+
+    max_score = max(det_score, gov_score, tutor_score)
+    if max_score == 0:
+        return 'general'
+
+    if det_score == max_score:
+        return 'det'
+    if gov_score == max_score:
+        return 'gov'
+    if tutor_score == max_score:
+        return 'tutor'
     return 'general'
 
 # ─────────────────────────────────────
@@ -262,8 +320,7 @@ def chat_messages(chat_id):
         # Детектор хабарларын parse қылу
         if m.role == 'assistant' and m.module in ('det', 'auto'):
             try:
-                import json as _json
-                parsed = _json.loads(m.content)
+                parsed = json.loads(m.content)
                 if isinstance(parsed, dict) and 'verdict' in parsed:
                     d['content'] = parsed.get('text', m.content)
                     d['det_data'] = {
@@ -335,7 +392,7 @@ def detect_image():
     if ext not in allowed:
         return jsonify({'error': f'Рұқсат берілген форматтар: {", ".join(allowed)}'}), 400
 
-    import tempfile, os as _os
+    import tempfile
     suffix = '.' + ext
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         file.save(tmp.name)
@@ -345,7 +402,7 @@ def detect_image():
         result = detector.analyze_image(tmp_path)
     finally:
         try:
-            _os.unlink(tmp_path)
+            os.unlink(tmp_path)
         except Exception:
             pass
 
@@ -368,7 +425,7 @@ def detect_video():
     if ext not in allowed:
         return jsonify({'error': f'Рұқсат берілген форматтар: {", ".join(allowed)}'}), 400
 
-    import tempfile, os as _os
+    import tempfile
     suffix = '.' + ext
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         file.save(tmp.name)
@@ -378,7 +435,7 @@ def detect_video():
         result = detector.analyze_video(tmp_path)
     finally:
         try:
-            _os.unlink(tmp_path)
+            os.unlink(tmp_path)
         except Exception:
             pass
 
@@ -397,5 +454,5 @@ def health():
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-        print("✅ База деректер дайын")
+        logger.info("База деректер дайын")
     app.run(debug=True, host='0.0.0.0', port=5000)
