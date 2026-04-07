@@ -147,9 +147,16 @@ class KazakhTutor:
                 lines.append(line)
 
         if rule.get('table'):
-            lines.append('\n**Жіктелуі:**')
+            lines.append('\n**Кесте:**')
             for row in rule['table']:
-                lines.append(f"**{row['person']}** → {row['suffix']} → *{row['example']}*")
+                # Әр түрлі кестелерге бейімделу (person/verb/type/case кілттері)
+                parts = []
+                for key, val in row.items():
+                    if key == 'example':
+                        parts.append(f"*{val}*")
+                    else:
+                        parts.append(f"**{val}**")
+                lines.append(' → '.join(parts))
 
         if rule.get('tip'):
             lines.append(f"\n💡 **Кеңес:** {rule['tip']}")

@@ -1,9 +1,13 @@
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 import os
 import json
+import re
 import logging
+import secrets
 from datetime import timedelta
 from dotenv import load_dotenv
 
@@ -30,7 +34,6 @@ app = Flask(__name__, static_folder='../frontend', static_url_path='')
 CORS(app)
 
 # Config
-import secrets
 _default_secret = secrets.token_hex(32)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', _default_secret)
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET', _default_secret)
@@ -44,6 +47,36 @@ app.config['MAX_CONTENT_LENGTH'] = 30 * 1024 * 1024  # 30 MB
 
 db.init_app(app)
 jwt = JWTManager(app)
+
+# Rate Limiting — спамнан қорғау
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=["200 per hour"],
+    storage_uri="memory://",
+)
+
+# ── Валидация хелперлері ──
+MAX_TEXT_LENGTH = 5000  # Максималды мәтін ұзындығы
+MAX_NAME_LENGTH = 100
+EMAIL_RE = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+
+def _validate_text(text, max_len=MAX_TEXT_LENGTH):
+    """Мәтінді тексеру — тым ұзын немесе бос."""
+    if not text or not text.strip():
+        return None, 'Мәтін жоқ'
+    text = text.strip()
+    if len(text) > max_len:
+        return None, f'Мәтін тым ұзын (макс. {max_len} таңба)'
+    return text, None
+
+def _validate_email(email):
+    """Email форматын тексеру."""
+    if not email or not EMAIL_RE.match(email):
+        return None, 'Жарамды email енгізіңіз'
+    if len(email) > 254:
+        return None, 'Email тым ұзын'
+    return email.strip().lower(), None
 
 # Modules
 gov       = GovService()
@@ -62,16 +95,24 @@ def index():
 # AUTH
 # ─────────────────────────────────────
 @app.route('/api/auth/register', methods=['POST'])
+@limiter.limit("10 per minute")
 def register():
     data = request.json or {}
     name     = data.get('name', '').strip()
-    email    = data.get('email', '').strip().lower()
     password = data.get('password', '')
 
-    if not name or not email or not password:
-        return jsonify({'error': 'Барлық өрістерді толтырыңыз'}), 400
-    if len(password) < 6:
+    if not name or len(name) > MAX_NAME_LENGTH:
+        return jsonify({'error': 'Атыңызды дұрыс енгізіңіз (1-100 таңба)'}), 400
+
+    email, err = _validate_email(data.get('email', ''))
+    if err:
+        return jsonify({'error': err}), 400
+
+    if not password or len(password) < 6:
         return jsonify({'error': 'Пароль кем дегенде 6 таңба'}), 400
+    if len(password) > 128:
+        return jsonify({'error': 'Пароль тым ұзын'}), 400
+
     if User.query.filter_by(email=email).first():
         return jsonify({'error': 'Бұл email тіркелген'}), 400
 
@@ -81,14 +122,19 @@ def register():
     db.session.commit()
 
     token = create_access_token(identity=str(user.id))
+    logger.info("Жаңа пайдаланушы: %s (%s)", name, email)
     return jsonify({'token': token, 'user': user.to_dict()}), 201
 
 
 @app.route('/api/auth/login', methods=['POST'])
+@limiter.limit("15 per minute")
 def login():
     data  = request.json or {}
     email = data.get('email', '').strip().lower()
     password = data.get('password', '')
+
+    if not email or not password:
+        return jsonify({'error': 'Email және парольді енгізіңіз'}), 400
 
     user = User.query.filter_by(email=email).first()
     if not user or not user.check_password(password):
@@ -111,6 +157,7 @@ def me():
 # ─────────────────────────────────────
 @app.route('/api/chat', methods=['POST'])
 @jwt_required(locations=["headers"])
+@limiter.limit("30 per minute")
 def chat():
     user_id = int(get_jwt_identity())
     user    = User.query.get(user_id)
@@ -121,12 +168,17 @@ def chat():
     user.reset_daily_if_needed()
 
     data    = request.json or {}
-    text    = data.get('text', '').strip()
     module  = data.get('module', 'auto')
     chat_id = data.get('chat_id')
 
-    if not text:
-        return jsonify({'error': 'Мәтін жоқ'}), 400
+    # Мәтінді валидациялау
+    text, err = _validate_text(data.get('text', ''))
+    if err:
+        return jsonify({'error': err}), 400
+
+    # Модуль валидациясы
+    if module not in ('all', 'auto', 'gov', 'tutor', 'det'):
+        module = 'auto'
 
     # Free plan лимит тексеру
     if user.plan == 'free' and user.daily_count >= 20:
@@ -379,6 +431,7 @@ def stats():
 # ─────────────────────────────────────
 @app.route('/api/detect/image', methods=['POST'])
 @jwt_required(optional=True)
+@limiter.limit("10 per minute")
 def detect_image():
     if 'file' not in request.files:
         return jsonify({'error': 'Файл жоқ'}), 400
@@ -413,6 +466,7 @@ def detect_image():
 # ─────────────────────────────────────
 @app.route('/api/detect/video', methods=['POST'])
 @jwt_required(optional=True)
+@limiter.limit("5 per minute")
 def detect_video():
     if 'file' not in request.files:
         return jsonify({'error': 'Файл жоқ'}), 400
@@ -446,7 +500,24 @@ def detect_video():
 # ─────────────────────────────────────
 @app.route('/api/health', methods=['GET'])
 def health():
-    return jsonify({'status': 'ok', 'version': '2.0'})
+    return jsonify({'status': 'ok', 'version': '2.1'})
+
+# ── Глобальды қателер өңдеуші ──
+@app.errorhandler(429)
+def rate_limit_exceeded(e):
+    return jsonify({
+        'error': 'Сұраулар шектеуі асырылды. Біраз күтіп, қайталаңыз.',
+        'retry_after': e.description
+    }), 429
+
+@app.errorhandler(413)
+def request_too_large(e):
+    return jsonify({'error': 'Файл тым үлкен (макс. 30 MB)'}), 413
+
+@app.errorhandler(500)
+def internal_error(e):
+    logger.error("Серверлік қате: %s", e)
+    return jsonify({'error': 'Серверлік қате. Кейінірек қайталаңыз.'}), 500
 
 # ─────────────────────────────────────
 # INIT DB + RUN
