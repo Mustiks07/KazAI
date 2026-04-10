@@ -56,16 +56,14 @@ class OpenRouterClient:
 
     BASE_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-    # Приоритет: качественные модели для казахского языка
+    # Бесплатные модельдер — 2025-04 OpenRouter API-дан тексерілген
     MODELS = [
-        "google/gemini-2.0-flash-exp:free",
-        "meta-llama/llama-4-maverick:free",
-        "meta-llama/llama-4-scout:free",
-        "deepseek/deepseek-chat-v3-0324:free",
-        "google/gemma-3-27b-it:free",
-        "mistralai/mistral-small-3.1-24b-instruct:free",
-        "qwen/qwen3-32b:free",
-        "meta-llama/llama-3.3-70b-instruct:free",
+        "google/gemma-4-31b-it:free",                  # Gemma 4 31B — ең жаңа, сапалы
+        "google/gemma-4-26b-a4b-it:free",              # Gemma 4 26B MoE — жылдам
+        "google/gemma-3-27b-it:free",                  # Gemma 3 27B — тұрақты
+        "google/gemma-3-12b-it:free",                  # Gemma 3 12B — жеңіл резерв
+        "nvidia/nemotron-nano-12b-v2-vl:free",         # NVIDIA — тез жауап
+        "google/gemma-3-4b-it:free",                   # Gemma 3 4B — соңғы резерв
     ]
 
     SYSTEM_PROMPTS = {

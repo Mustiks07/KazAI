@@ -1,5 +1,7 @@
-import re, os, math, pickle, requests, json, base64
+import re, os, math, pickle, requests, json, base64, logging
 from collections import Counter
+
+logger = logging.getLogger(__name__)
 
 
 # ══════════════════════════════════════════
@@ -360,19 +362,26 @@ score meaning: 0-25=clearly human, 26-45=likely human, 46-55=uncertain, 56-75=li
 # ══════════════════════════════════════════
 class ImageDetector:
 
+    # Бесплатные vision-модельдер (суретті көре алады) — 2025-04 тексерілген
+    VISION_MODELS = [
+        'google/gemma-4-31b-it:free',               # Gemma 4 31B — ең жақсы, видео да қолдайды
+        'google/gemma-4-26b-a4b-it:free',           # Gemma 4 26B — MoE, жылдам
+        'nvidia/nemotron-nano-12b-v2-vl:free',      # NVIDIA VL — видео да қолдайды
+        'google/gemma-3-27b-it:free',               # Gemma 3 27B — vision қолдайды
+        'google/gemma-3-12b-it:free',               # Gemma 3 12B — кіші резерв
+    ]
+
     def __init__(self):
         self.or_api_key = os.getenv('OPENROUTER_API_KEY', '')
 
     def analyze(self, image_path):
-        # 1. NVIDIA Nemotron VL (негізгі)
-        result = self._vision_analyze(image_path, 'nvidia/nemotron-nano-12b-v2-vl:free')
-        if result is not None:
-            return result
-        # 2. Google Gemma Vision (резерв)
-        result = self._vision_analyze(image_path, 'google/gemma-3-27b-it:free')
-        if result is not None:
-            return result
-        # 3. Pillow статистика (соңғы резерв)
+        # Vision модельдерін кезекпен сынау
+        for model in self.VISION_MODELS:
+            result = self._vision_analyze(image_path, model)
+            if result is not None:
+                return result
+
+        # Соңғы резерв — Pillow статистикалық талдау
         try:
             from PIL import Image
             return self._pillow_analyze(image_path)
@@ -465,15 +474,15 @@ Where score: 0-30=real photo, 31-55=likely real, 56-75=likely AI, 76-100=clearly
             )
 
             if resp.status_code == 429:
-                print(f'Rate limit ({model}), резервке...')
+                logger.warning('Rate limit (%s), резервке...', model)
                 return None
             if resp.status_code != 200:
-                print(f'Vision қате {resp.status_code} ({model})')
+                logger.warning('Vision қате %d (%s)', resp.status_code, model)
                 return None
 
             choice  = resp.json()['choices'][0]
             content = choice.get('message', {}).get('content', '') or ''
-            print(f'Vision raw [{model}]: {repr(content[:150])}')
+            logger.info('Vision raw [%s]: %s', model, repr(content[:150]))
 
             # JSON парсинг
             json_match = re.search(r'\{.*?"score"\s*:\s*(\d+).*?\}', content, re.DOTALL)
@@ -515,7 +524,7 @@ Where score: 0-30=real photo, 31-55=likely real, 56-75=likely AI, 76-100=clearly
             return None
 
         except Exception as e:
-            print(f'Vision қатесі [{model}]: {e}')
+            logger.error('Vision қатесі [%s]: %s', model, e)
             return None
 
     def _pillow_analyze(self, path):
