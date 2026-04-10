@@ -126,7 +126,12 @@ async function apiCall(endpoint, method = 'GET', body = null) {
   if (body) opts.body = JSON.stringify(body);
   const res  = await fetch(endpoint, opts);
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  if (!res.ok) {
+    if (res.status === 429) {
+      throw new Error('Сұраулар лимиті! Біраз күтіп, қайталаңыз.');
+    }
+    throw new Error(data.error || `HTTP ${res.status}`);
+  }
   return data;
 }
 
@@ -214,6 +219,8 @@ function toggleCompact(el) {
 function toggleSidebar() {
   sbOpen = !sbOpen;
   document.getElementById('sidebar').classList.toggle('closed', !sbOpen);
+  const backdrop = document.getElementById('sbBackdrop');
+  if (backdrop) backdrop.classList.toggle('show', sbOpen && window.innerWidth <= 768);
 }
 
 function newChat() {
@@ -450,8 +457,14 @@ async function send() {
     _handleResponse(data, mod);
   } catch(e) {
     rmTyping();
-    showToast('Сервер қатесі: ' + e.message, 'error');
-    addMsg('Кешіріңіз, серверге қосылу мүмкін болмады. Интернетті тексеріңіз немесе кейінірек қайталап көріңіз.', false, mod);
+    const msg = e.message || '';
+    if (msg.includes('лимит') || msg.includes('429')) {
+      showToast('Тым жылдам сұрау! Біраз күтіңіз.', 'error');
+      addMsg('Сұраулар шектеуі асырылды. 30 секунд күтіп, қайталаңыз.', false, mod);
+    } else {
+      showToast('Қате: ' + msg, 'error');
+      addMsg('Кешіріңіз, серверге қосылу мүмкін болмады. Интернетті тексеріңіз немесе кейінірек қайталап көріңіз.', false, mod);
+    }
   }
   document.getElementById('sendBtn').disabled = false;
 }
@@ -491,6 +504,8 @@ function setMod(m, el, keepChat = false) {
   document.getElementById('inp').placeholder         = cfg.hint;
   if (!keepChat && currentChatId !== null) { currentChatId = null; clearChatMessages(); }
   if (m === 'gov') setTimeout(showGovFAQ, 120);
+  // Мобильді — sidebar жабу
+  if (window.innerWidth <= 768 && sbOpen) toggleSidebar();
 }
 
 function onFile(e) {
