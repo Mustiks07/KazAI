@@ -366,9 +366,10 @@ class ImageDetector:
     VISION_MODELS = [
         'google/gemma-4-31b-it:free',               # Gemma 4 31B — ең жақсы, видео да қолдайды
         'google/gemma-4-26b-a4b-it:free',           # Gemma 4 26B — MoE, жылдам
-        'nvidia/nemotron-nano-12b-v2-vl:free',      # NVIDIA VL — видео да қолдайды
         'google/gemma-3-27b-it:free',               # Gemma 3 27B — vision қолдайды
+        'nvidia/nemotron-nano-12b-v2-vl:free',      # NVIDIA VL — видео да қолдайды
         'google/gemma-3-12b-it:free',               # Gemma 3 12B — кіші резерв
+        'openrouter/free',                           # Авто — бос модельге бағыттайды
     ]
 
     def __init__(self):
@@ -483,6 +484,11 @@ Where score: 0-30=real photo, 31-55=likely real, 56-75=likely AI, 76-100=clearly
             choice  = resp.json()['choices'][0]
             content = choice.get('message', {}).get('content', '') or ''
             logger.info('Vision raw [%s]: %s', model, repr(content[:150]))
+
+            # Бос жауап — келесі модельге
+            if not content.strip():
+                logger.warning('Бос жауап (%s), келесі модельге...', model)
+                return None
 
             # JSON парсинг
             json_match = re.search(r'\{.*?"score"\s*:\s*(\d+).*?\}', content, re.DOTALL)

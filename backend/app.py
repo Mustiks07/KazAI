@@ -147,7 +147,7 @@ def login():
 @app.route('/api/auth/me', methods=['GET'])
 @jwt_required(locations=["headers"])
 def me():
-    user = User.query.get(int(get_jwt_identity()))
+    user = db.session.get(User,int(get_jwt_identity()))
     if not user:
         return jsonify({'error': 'Пайдаланушы табылмады'}), 404
     return jsonify(user.to_dict())
@@ -160,7 +160,7 @@ def me():
 @limiter.limit("30 per minute")
 def chat():
     user_id = int(get_jwt_identity())
-    user    = User.query.get(user_id)
+    user    = db.session.get(User,user_id)
     if not user:
         return jsonify({'error': 'Пайдаланушы табылмады'}), 404
 
@@ -406,7 +406,7 @@ def upgrade():
     plan    = request.json.get('plan', 'pro')
     if plan not in ('free', 'pro', 'ultra'):
         return jsonify({'error': 'Жарамсыз жоспар'}), 400
-    user = User.query.get(user_id)
+    user = db.session.get(User,user_id)
     user.plan = plan
     db.session.commit()
     return jsonify({'ok': True, 'plan': plan})
@@ -417,7 +417,7 @@ def upgrade():
 @app.route('/api/stats', methods=['GET'])
 @jwt_required(locations=["headers"])
 def stats():
-    user = User.query.get(int(get_jwt_identity()))
+    user = db.session.get(User,int(get_jwt_identity()))
     user.reset_daily_if_needed()
     return jsonify({
         'total_messages': user.total_messages,

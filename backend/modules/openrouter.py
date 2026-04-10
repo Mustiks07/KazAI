@@ -64,6 +64,7 @@ class OpenRouterClient:
         "google/gemma-3-12b-it:free",                  # Gemma 3 12B — жеңіл резерв
         "nvidia/nemotron-nano-12b-v2-vl:free",         # NVIDIA — тез жауап
         "google/gemma-3-4b-it:free",                   # Gemma 3 4B — соңғы резерв
+        "openrouter/free",                              # Авто — бос бесплатный модельге
     ]
 
     SYSTEM_PROMPTS = {
